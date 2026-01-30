@@ -4,127 +4,133 @@
 #include "HamClock.h"
 
 
-#if defined(_SUPPORT_CITIES)
+// name of server file containing cities and local cache name
+static const char cities_page[] = "/cities2.txt"; // changed in 2.81
+static const char cities_fn[] = "cities2.txt";
 
-
-// name of server file containing cities
-static const char cities_fn[] PROGMEM = "/cities2.txt"; // changed in 2.81
+// refresh period
+#define CITIES_DT       (7L*24*3600)            // max cache age, secs
+#define CITIES_SZ       1000                    // min believable size
+#define CRETRY_DT       (60)                    // retry preiod on error, secs
 
 // malloced sorted kdtree
-static KD3Node *city_root;
+static KD3Node *city_malloc;                    // malloced array
+static KD3Node *city_root;                      // tree root somewhere within the array
+static int n_cities;                            // number in use
 
 // pixel width of longest city
 static int max_city_len;
 
 
-/* query for list of cities, create kdtree.
- * harmless if called more than once.
- * N.B. UNIX only.
+/* read list of cities, create kdtree.
  */
-void readCities()
+static void readCities()
 {
-        // ignore if already done
-        if (city_root)
-            return;
-
-        // connection
-        WiFiClient cities_client;
-
-        Serial.println (cities_fn);
-        resetWatchdog();
-        if (wifiOk() && cities_client.connect (backend_host, backend_port)) {
-
-            // stay current
-            updateClocks(false);
-            resetWatchdog();
-
-            // send query
-            httpHCPGET (cities_client, backend_host, cities_fn);
-
-            // skip http header
-            if (!httpSkipHeader (cities_client)) {
-                Serial.print (F("Cities: bad header\n"));
-                goto out;
-            }
-
-            // read each city and build temp lists of location and name
-            char **names = NULL;                // temp malloced list of persistent malloced names
-            LatLong *lls = NULL;                // temp malloced list of locations
-            int n_cities = 0;                   // number in use in each list
-            int n_malloced = 0;                 // number malloced in each list
-            char line[200];
-            max_city_len = 0;
-            while (getTCPLine (cities_client, line, sizeof(line), NULL)) {
-
-                // crack
-                char name[101];
-                float lat, lng;
-                if (sscanf (line, _FX("%f, %f, \"%100[^\"]\""), &lat, &lng, name) != 3)
-                    continue;
-
-                // grow lists if full
-                if (n_cities + 1 > n_malloced) {
-                    n_malloced += 100;
-                    names = (char **) realloc (names, n_malloced * sizeof(char *));
-                    lls = (LatLong *) realloc (lls, n_malloced * sizeof(LatLong));
-                    if (!names || !lls)
-                        fatalError (_FX("alloc cities: %d"), n_malloced);
-                }
-
-                // add to lists
-                names[n_cities] = strdup (name);
-                LatLong &new_ll = lls[n_cities];
-                new_ll.lat_d = lat;
-                new_ll.lng_d = lng;
-                normalizeLL (new_ll);
-
-                // capture longest name
-                int name_l = strlen (name);
-                if (name_l > max_city_len)
-                    max_city_len = name_l;
-
-                // good
-                n_cities++;
-
-            }
-            Serial.printf (_FX("Cities: found %d\n"), n_cities);
-
-            // build tree -- N.B. can not build as we read because realloc could move left/right pointers
-            KD3Node *city_tree = (KD3Node *) calloc (n_cities, sizeof(KD3Node));
-            if (!city_tree && n_cities > 0)
-                fatalError (_FX("alloc cities tree: %d"), n_cities);
-            for (int i = 0; i < n_cities; i++) {
-                KD3Node *kp = &city_tree[i];
-                ll2KD3Node (lls[i], kp);
-                kp->data = (void*) names[i];
-            }
-
-            // finished with temporary lists -- names themselves live forever
-            free (names);
-            free (lls);
-
-            // sort
-            city_root = mkKD3NodeTree (city_tree, n_cities, 0);
+        // insure reset
+        if (city_malloc) {
+            freeKD3NodeTree (city_malloc, n_cities);
+            city_root = NULL;
+            city_malloc = NULL;
+            n_cities = 0;
         }
 
-    out:
-        cities_client.stop();
+        // open file from cache
+        FILE *fp = openCachedFile (cities_fn, cities_page, CITIES_DT, CITIES_SZ);
+        if (!fp)
+            return;
 
+        // read each city and build temp lists of location and name
+        char **names = NULL;                    // temp malloced list of persistent malloced names
+        LatLong *lls = NULL;                    // temp malloced list of locations
+        int n_malloced = 0;                     // number malloced in each list
+        char line[200];
+        max_city_len = 0;
+
+        while (fgets (line, sizeof(line), fp)) {
+
+            // crack
+            char name[101];                     // N.B. match length-1 in sscanf
+            float lat, lng;
+            if (sscanf (line, "%f, %f, \"%100[^\"]\"", &lat, &lng, name) != 3)
+                continue;
+
+            // grow lists if full
+            if (n_cities + 1 > n_malloced) {
+                n_malloced += 100;
+                names = (char **) realloc (names, n_malloced * sizeof(char *));
+                lls = (LatLong *) realloc (lls, n_malloced * sizeof(LatLong));
+                if (!names || !lls)
+                    fatalError ("alloc cities: %d", n_malloced);
+            }
+
+            // add to lists
+            names[n_cities] = strdup (name);
+            LatLong &new_ll = lls[n_cities];
+            new_ll.lat_d = lat;
+            new_ll.lng_d = lng;
+            normalizeLL (new_ll);
+
+            // capture longest name
+            int name_l = strlen (name);
+            if (name_l > max_city_len)
+                max_city_len = name_l;
+
+            // good
+            n_cities++;
+
+        }
+
+        Serial.printf ("Cities: found %d\n", n_cities);
+
+        // finished with file
+        fclose (fp);
+
+        // build tree -- N.B. can not build as we read because realloc could move left/right pointers
+        city_malloc = (KD3Node *) calloc (n_cities, sizeof(KD3Node));
+        if (!city_malloc && n_cities > 0)
+            fatalError ("alloc cities tree: %d", n_cities);
+        for (int i = 0; i < n_cities; i++) {
+            KD3Node *kp = &city_malloc[i];
+            ll2KD3Node (lls[i], kp);
+            kp->data = (void*) names[i];
+        }
+
+        // finished with temporary lists -- names themselves live forever
+        free (names);
+        free (lls);
+
+        // transform array into proper KD3 tree
+        city_root = mkKD3NodeTree (city_malloc, n_cities, 0);
 }
 
-/* return name of city and location nearest the given ll, else NULL.
- * also report longest city length for drawing purposes.
+/* return name of nearest city and location but no farther than MAX_CSR_DIST from the given ll, else NULL.
+ * also report back longest city length for drawing purposes unless NULL.
  */
-const char *getNearestCity (const LatLong &ll, LatLong &city_ll, int &max_cl)
+const char *getNearestCity (const LatLong &ll, LatLong &city_ll, int *max_cl)
 {
-        // ignore if not ready or failed
-        if (!city_root)
+        // refresh
+        static time_t next_update;
+        if (myNow() > next_update) {
+            readCities();
+            if (!city_root) {
+                next_update = myNow() + CRETRY_DT;
+                Serial.printf ("%s failed, next update in %d\n", cities_fn, CRETRY_DT);
+            } else
+                next_update = myNow() + CITIES_DT;
+        }
+        if (!city_root) {
+            Serial.printf ("still no %s after refresh attempt", cities_fn);
             return (NULL);
+        }
+
+        // pass back max length if interested
+        if (max_cl)
+            *max_cl = max_city_len;
 
         // search
         KD3Node seach_city;
         ll2KD3Node (ll, &seach_city);
-        KD3Node *best_city = NULL;
+        const KD3Node *best_city = NULL;
         float best_dist = 0;
         int n_visited = 0;
         nearestKD3Node (city_root, &seach_city, 0, &best_city, &best_dist, &n_visited);
@@ -133,7 +139,6 @@ const char *getNearestCity (const LatLong &ll, LatLong &city_ll, int &max_cl)
         // report results if successful
         best_dist = nearestKD3Dist2Miles (best_dist);   // convert to miles
         if (best_dist < MAX_CSR_DIST) {
-            max_cl = max_city_len;
             KD3Node2ll (*best_city, &city_ll);
             return ((char*)(best_city->data));
         } else {
@@ -142,17 +147,3 @@ const char *getNearestCity (const LatLong &ll, LatLong &city_ll, int &max_cl)
 
 }
 
-#else
-
-// dummies
-
-const char *getNearestCity (const LatLong &ll, LatLong &city_ll, int &max_cl) {
-    (void) ll;
-    (void) city_ll;
-    (void) max_cl;
-    return NULL;
-}
-
-void readCities() {}
-
-#endif // _SUPPORT_CITIES

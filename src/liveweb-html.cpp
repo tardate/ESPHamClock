@@ -35,9 +35,9 @@ char live_html[] =  R"_raw_html_(
         // config
         const UPDATE_MS = 100;          // update interval
         const MOUSE_JITTER = 5;         // allow this much mouse motion for a touch
-        const MOUSE_HOLD_MS = 3000;     // mouse down duration to implement hold action
         const APP_W = 800;              // app coord system width
-        const nonan_chars = ['Tab', 'Enter', 'Space', 'Escape', 'Backspace'];    // supported non-alnum chars
+        const nonan_chars =             // supported non-alnum chars
+          ['Tab', 'Enter', 'Space', 'Escape', 'Backspace', 'ArrowLeft', 'ArrowDown', 'ArrowUp', 'ArrowRight'];
         const RELOAD_KEY = "reload";    // sessionStorage key to manage reloads
 
         // state
@@ -48,11 +48,11 @@ char live_html[] =  R"_raw_html_(
         var event_verbose = 0;          // > 0 for more info about keyboard or pointer activity
         var prev_regnhdr;               // for erasing if drawing_verbose > 1
         var app_scale = 0;              // size factor -- set for real when get first whole image
-        var pointerdown_ms = 0;         // Date.now when pointerdown event
         var pointerdown_x = 0;          // location of pointerdown event
         var pointerdown_y = 0;          // location of pointerdown event
         var pointermove_ms = 0;         // Date.now when pointermove event
         var want_fs, tried_fs;          // whether user wants full screen and has succeeded once
+        var wsclose_reload = 1;         // whether to reload if lose ws connection
         var cvs, ctx;                   // handy
 
         // define functions, onLoad follows near the bottom
@@ -229,42 +229,38 @@ char live_html[] =  R"_raw_html_(
             }
         }
 
-        // send the given key to the hamclock
-        function sendKey (k) {
+        // send the given key and optionl control and shift modifier codes to the hamclock
+        function sendKey (k, c, s) {
             if (event_verbose)
                 console.log('sending ' + k);
-            sendWSMsg ('set_char?char=' + k);
+            var msg = 'set_char?char=' + k + '&mod=';
+            if (c)
+                msg += 'C';
+            if (s)
+                msg += 'S';
+            sendWSMsg (msg);
         }
 
 
         // connect keydown to send character to hamclock, beware ctrl keys and browser interactions
         window.addEventListener('keydown', function(event) {
-            // check if user wants to go full screen
+
+            if (event_verbose)
+                console.log('keydown: ', event);
+
+            // now that user has done something check if they want to go full screen
             checkFullScreen();
 
-            // get char name or map arrow keys to vi
-            var key;
-            switch (event.key) {
-            case 'ArrowLeft':  key = 'h'; break;
-            case 'ArrowDown':  key = 'j'; break;
-            case 'ArrowUp':    key = 'k'; break;
-            case 'ArrowRight': key = 'l'; break;
-            default:           key = event.key;
-            }
+            // local copy for possible modification
+            var key = event.key;
 
             // a real space would send 'char= ' which doesn't parse so we invent Space name
             if (key === ' ')
                 key = 'Space';
 
-            // ignore if modified
-            if (event.metaKey || event.ctrlKey || event.altKey) {
-                if (event_verbose)
-                    console.log('ignoring modifier ' + key);
-                return;
-            }
-
             // accept only certain non-alphanumeric keys
-            if (key.length > 1 && !nonan_chars.find (e => { if (e == key) return true; })) {
+            if (event.metaKey
+                        || (key.length > 1 && !nonan_chars.find (e => { if (e == key) return true; }))) {
                 if (event_verbose)
                     console.log('ignoring ' + key);
                 return;
@@ -277,7 +273,7 @@ char live_html[] =  R"_raw_html_(
                 event.preventDefault();
             }
 
-            sendKey (key);
+            sendKey (key, event.ctrlKey, event.shiftKey);
         });
 
         // respond to mobile device being rotated. resize seems to work better than orientationchange
@@ -289,6 +285,21 @@ char live_html[] =  R"_raw_html_(
             runSoon (getFullImage);
         });
 
+        // show _one_ simple stand-alone message
+        var msg_drawn;
+        function drawMsgOnce (msg) {
+            if (!msg_drawn) {
+                console.log (msg);
+                ctx.fillStyle = "black";
+                ctx.fillRect (0, 0, 10000, 10000);
+                ctx.fillStyle = "orange";
+                ctx.font = "25px sans-serif";
+                ctx.fillText (msg, 50, 50);
+                msg_drawn = 1;
+            }
+        }
+
+
         // reload this page a few times, presumably hamclock was restarted but don't try forever
         function reloadThisPage() {
 
@@ -299,12 +310,7 @@ char live_html[] =  R"_raw_html_(
 
                 // already loaded once, just report without restart but remove key to allow manual reloading
                 sessionStorage.removeItem (RELOAD_KEY);
-
-                ctx.fillStyle = "black";
-                ctx.fillRect (0, 0, 1000, 1000);
-                ctx.fillStyle = "orange";
-                ctx.font = "30px sans-serif";
-                ctx.fillText ("No connection", 50, 50);
+                drawMsgOnce ("No connection");
 
             } else {
 
@@ -359,7 +365,9 @@ char live_html[] =  R"_raw_html_(
             };
             ws.onclose = function () {
                 console.log('WS connection closed.');
-                reloadThisPage();
+                // reload on server die but not intentional actions
+                if (wsclose_reload)
+                    reloadThisPage();
             };
             ws.onerror = function (e) {
                 console.log('WS connection failed: ', e);
@@ -410,12 +418,30 @@ char live_html[] =  R"_raw_html_(
                     }
 
                     else if (e.data.substring(0,5) == 'open ') {
-                        // try to open a url
+                        // try to open a url in a tab
                         var url = e.data.substring(5);
-                        console.log('opening ', url);
-                        if (!window.open(url))
+                        console.log('opening ' + url);
+                        if (!window.open(url, "HamClockTab")) {         // naming the tab allows reuse
                             console.log ("Failed to open ", url);
+                            alert ("Failed to open " + url + ". \nYou may have popups blocked");
+                        }
                     }
+
+                    else if (e.data === 'Too many connections') {       // N.B. string must match liveweb.cpp
+                        // close and don't reload
+                        drawMsgOnce (e.data);
+                        wsclose_reload = 0;
+                    }
+
+                    else if (e.data === 'Session timed out') {          // N.B. string must match liveweb.cpp
+                        // close and don't reload
+                        drawMsgOnce (e.data);
+                        wsclose_reload = 0;
+                    }
+
+
+                    else
+                        drawMsgOnce (e.data);
 
                 } else {
                     console.log ("Unknown WS data: ", e.data);
@@ -442,7 +468,7 @@ char live_html[] =  R"_raw_html_(
                     return;
                 }
 
-                pointerdown_ms = Date.now();
+                pointermove_ms = Date.now();
                 pointerdown_x = m.x;
                 pointerdown_y = m.y;
                 if (event_verbose)
@@ -459,7 +485,7 @@ char live_html[] =  R"_raw_html_(
 
             });
 
-            // pointerup: send touch, hold depending on duration since pointerdown
+            // pointerup: send set_touch
             cvs.addEventListener ('pointerup', function(event) {
                 // all ours
                 event.preventDefault();
@@ -471,20 +497,21 @@ char live_html[] =  R"_raw_html_(
                     return;
                 }
 
-                // ignore if pointer moved
+                // ignore if pointer moved so moves don't end with a tap
                 if (Math.abs(m.x-pointerdown_x) > MOUSE_JITTER || Math.abs(m.y-pointerdown_y) > MOUSE_JITTER){
                     if (event_verbose)
                         console.log ('cancel pointerup because pointer moved');
                     return;
                 }
 
-                // decide whether hold
-                let pointer_dt = pointerdown_ms ? Date.now() - pointerdown_ms : 0;
-                let hold = pointer_dt >= MOUSE_HOLD_MS;
-                pointerdown_ms = 0;
+                // code button0+mods or button1 as button 1, else button 0.
+                // N.B. event.button 0 means button 1 !
+                var mods = event.ctrlKey || event.metaKey;
+                var button = ((event.button == 0 && mods) || event.button == 1) ? 1 : 0;
+                console.log ("button " + event.button + " + " + mods + " -> " + button);
 
                 // compose and send
-                let msg = 'set_touch?x=' + m.x + '&y=' + m.y + (hold ? '&hold=1' : '&hold=0');
+                let msg = 'set_touch?x=' + m.x + '&y=' + m.y + '&button=' + button;
                 sendWSMsg (msg);
             });
 

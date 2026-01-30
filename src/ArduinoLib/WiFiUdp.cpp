@@ -1,7 +1,5 @@
 #include "WiFiUdp.h"
 
-static bool verbose;
-
 WiFiUDP::WiFiUDP()
 {
 	sockfd = -1;
@@ -28,16 +26,14 @@ bool WiFiUDP::begin(int port)
         sin.sin_port = htons(port);
         sin.sin_addr.s_addr = htonl(INADDR_ANY);
         int one = 1;
-        (void) setsockopt (sockfd, SOL_SOCKET, SO_REUSEPORT, &one, sizeof(one));
-        one = 1;
-        (void) setsockopt (sockfd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+        (void) setsockopt (sockfd, SOL_SOCKET, SO_REUSEPORT, &one, sizeof(one));        // too bad
         if (bind(sockfd, (struct sockaddr*)&sin, sizeof(sin)) < 0) {
 	    printf ("UDP: bind(%d): %s\n", port, strerror(errno));
             stop();
 	    return (false);
 	}
 
-        if (verbose)
+        if (debugLevel(DEBUG_NET, 1))
             printf ("UDP: new socket %d port %d\n", sockfd, port);
 
 	return (true);
@@ -79,7 +75,7 @@ bool WiFiUDP::beginMulticast (IPAddress ifIP, IPAddress mcIP, int port)
 	    return (false);
         }
 
-        if (verbose)
+        if (debugLevel(DEBUG_NET, 1))
             printf ("UDP: new multicast socket %d\n", sockfd);
 
         // ok
@@ -165,25 +161,31 @@ int WiFiUDP::parsePacket()
         if (sockfd < 0)
             return (0);
 
+	// use select() so we can time out, just using read could hang forever
 	struct timeval tv;
 	fd_set rset;
-	tv.tv_sec = 0;		// don't block
+	tv.tv_sec = 0;
 	tv.tv_usec = 0;
 	FD_ZERO (&rset);
 	FD_SET (sockfd, &rset);
-
-	// use select() so we can time out, just using read could hang forever
+        if (debugLevel(DEBUG_NET, 1))
+            printf ("UDP: checking for pending packet\n");
 	int s = ::select (sockfd+1, &rset, NULL, NULL, &tv);
 	if (s < 0) {
 	    printf ("UDP: select(poll): %s\n", strerror(errno));
             stop();
 	    return (0);
 	}
-	if (s == 0)
+	if (s == 0) {
+            if (debugLevel(DEBUG_NET, 1))
+                printf ("UDP: socket %d read timed out\n", sockfd);
 	    return (0);
+        }
 
         socklen_t rlen = sizeof(remoteip);
 	r_n = ::recvfrom(sockfd, r_buf, sizeof(r_buf), 0, (struct sockaddr *)&remoteip, &rlen);
+        if (debugLevel(DEBUG_NET, 1))
+            printf ("UDP: socket %d read %d\n", sockfd, r_n);
 	if (r_n < 0) {
 	    printf ("UDP: recvfrom(): %s\n", strerror(errno));
             stop();
@@ -202,7 +204,7 @@ void WiFiUDP::stop()
 {
 	if (sockfd >= 0) {
 	    ::close (sockfd);
-            if (verbose)
+            if (debugLevel(DEBUG_NET, 1))
                 printf ("UDP: closing socket %d\n", sockfd);
 	    sockfd = -1;
 	}

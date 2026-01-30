@@ -1,31 +1,19 @@
 /* implement a live web server connection so browsers can see and control HamClock.
  *
- * we listen to liveweb_port for live.html or web socket upgrades.
+ * we listen to liveweb_rw_port and liveweb_ro_port for live.html or web socket upgrades.
  *
  * Browser displays entire HamClock frame buffer. Complete frame is sent initially then only the
  * pixels that change.
  *
  * N.B. this server-side code must work in concert with client-side code in liveweb-html.cpp.
- *
- * Not implemented on ESP because reading pixels is far too slow and because it does not have enough memory
- *   to keep a reference image.
  */
 
 
 #include "HamClock.h"
 
-
-// public
-time_t last_live;                                       // last live update; public for wifi.cpp
-bool no_web_touch;                                      // disable web touch events
-bool liveweb_fs_ready;                                  // set when ok to send fullscreen command
-char *liveweb_openurl;                                  // a url to attempt to open
-
-#if defined(_IS_UNIX)
-
-
 // web socket library
 #include "ws.h"
+
 
 // import png writer -- complete implementation in a header file -- amazing.
 // https://github.com/nothings/stb
@@ -33,29 +21,33 @@ char *liveweb_openurl;                                  // a url to attempt to o
 #include "stb_image_write.h"
 
 
-// our public endpoint port
-int liveweb_port = LIVEWEB_PORT;                        // server port -- can be changed with -w
-
-// max allowed connections -- must be < ws.h::MAX_CLIENTS
-int liveweb_max = 10;
+// public
+int n_roweb, n_rwweb;                                   // stats for user agent
+bool liveweb_fs_ready;                                  // set when ok to send fullscreen command
+int liveweb_rw_port = LIVEWEB_RW_PORT;                  // r/w server port -- can be changed with -w
+int liveweb_ro_port = LIVEWEB_RO_PORT;                  // r/o server port -- can be changed with -r
+int liveweb_max = 10;                                   // max allowed connections < ws.h::MAX_CLIENTS
+int liveweb_to;                                         // client inactivity timeout, minutes
 const int liveweb_maxmax = MAX_CLIENTS-1;               // max max for -help
 
 
 // png format is 3 bytes per pixel
-#define LIVE_BYPPIX     3                               // bytes per pixel
 #define LIVE_NPIX       (BUILD_H*BUILD_W)               // pixels per complete image
 #define LIVE_NBYTES     (LIVE_NPIX*LIVE_BYPPIX)         // bytes per complete image
 #define LIVE_RBYTES     (BUILD_W*LIVE_BYPPIX)           // bytes per row
 #define COMP_RGB        3                               // composition request code for RGB pixels
 
 
-// trace level
-static int live_verbose = 0;                            // more chatter if > 0
+
+// record client and possible URL for it to display.
+static ws_cli_conn_t *lastest_ws_touch_client;          // most recent client performing set_touch
+static char *liveweb_openurl;                           // malloced url to attempt to open, else NULL
+static pthread_mutex_t lw_url_lock = PTHREAD_MUTEX_INITIALIZER; // thread-safe access for liveweb_openurl
 
 
 // complete scene on browser for each web socket
 typedef struct {
-    ws_cli_conn_t *client;                              // opaque pointer unique to each connection, else NULL
+    ws_cli_conn_t *client;                              // pointer unique to each connection, else NULL
     uint8_t *pixels;                                    // this client's current display image
 } SessionInfo;
 static SessionInfo *si_list;                            // malloced list
@@ -93,9 +85,9 @@ static void wifiSTBWrite_helper (void *context, void *data, int size)
     int n_sent = ws_sendframe_bin (client, (const char *) data, size);
     if (n_sent != size)
         Serial.printf ("LIVE: client %s: wrong png write len: %d != %d\n", ws_getaddress(client), n_sent, size);
-    if (live_verbose > 1) {
+    if (debugLevel (DEBUG_WEB, 2)) {
         Serial.printf ("LIVE: sent image %d bytes\n", size);
-        if (live_verbose > 2) {
+        if (debugLevel (DEBUG_WEB, 3)) {
             FILE *fp = fopen ("/tmp/live.png", "w");
             fwrite (data, size, 1, fp);
             fclose(fp);
@@ -134,7 +126,6 @@ static uint8_t *getSIPixels (ws_cli_conn_t *client)
     return (pixels);
 }
 
-
 /* send difference between client's last known screen image and the current image,
  * then store current image back in client's SessionInfo.
  */
@@ -144,7 +135,7 @@ static void updateExistingClient (ws_cli_conn_t *client)
     struct timeval tv0;
     gettimeofday (&tv0, NULL);
 
-    // find client's pixels
+    // find client's current pixels
     uint8_t *pixels = getSIPixels(client);
     if (!pixels)
         return;
@@ -155,19 +146,49 @@ static void updateExistingClient (ws_cli_conn_t *client)
         bye ("No memory for LIVE update\n");
     memcpy (img_client, pixels, LIVE_NBYTES);
 
-    // replace clients's pixels with our current screen contents
+    // replace clients's pixels with current screen contents
     if (!tft.getRawPix (pixels, LIVE_NPIX))
         bye ("getRawPix for update failed\n");
     uint8_t *img_now = pixels;                      // better name
 
-    if (live_verbose > 1) {
+    if (debugLevel (DEBUG_WEB, 2)) {
         struct timeval tv1;
         gettimeofday (&tv1, NULL);
-        Serial.printf ("LIVE: client %s: copying img and reading new pixels took %ld usec\n", ws_getaddress(client),
-                                TVDELUS (tv0,tv1));
+        Serial.printf ("LIVE: client %s: copying img and reading new pixels took %ld usec\n",
+                                ws_getaddress(client), TVDELUS (tv0,tv1));
     }
 
-    // we only send small regions that have changed since previous.
+    // draw connection counter on main page
+    if (mainpage_up) {
+        #define CTR_RAWW (3*tft.SCALESZ)
+        #define CTR_RAWH (5*tft.SCALESZ)
+        #define CTR_RAWX (tft.SCALESZ*(lkscrn_b.x-4))
+        #define CTR_RAWY (tft.SCALESZ*(lkscrn_b.y+lkscrn_b.h+3))
+        SBox digit_b = {(uint16_t)CTR_RAWX, (uint16_t)CTR_RAWY, (uint16_t)CTR_RAWW, (uint16_t)CTR_RAWH};
+        if (client->port == liveweb_ro_port) {
+            static const uint8_t txt_clr[LIVE_BYPPIX] = {255U,50U,50U};
+            // n_roweb = 1234567890;       // RBF
+            if (n_roweb < 10)
+                digit_b.x += CTR_RAWW;
+            drawImgNumber (n_roweb, img_now, digit_b, txt_clr);
+            digit_b.x += 2*digit_b.w/3;
+            drawImgR (img_now, digit_b, txt_clr);
+            digit_b.x += 3*digit_b.w/2;
+            drawImgO (img_now, digit_b, txt_clr);
+        } else {
+            static const uint8_t txt_clr[LIVE_BYPPIX] = {255U,255U,255U};
+            // n_rwweb = 1234567890;       // RBF
+            if (n_rwweb < 10)
+                digit_b.x += CTR_RAWW;
+            drawImgNumber (n_rwweb, img_now, digit_b, txt_clr);
+            digit_b.x += 2*digit_b.w/3;
+            drawImgR (img_now, digit_b, txt_clr);
+            digit_b.x += 3*digit_b.w/2;
+            drawImgW (img_now, digit_b, txt_clr);
+        }
+    }
+
+    // we only send small regions that have changed since previous, ie changes from img_client to img_now.
     // image is divided into fixed sized blocks and those which have changed are coalesced into regions
     // of height one block but variable length. these are collected and sent as one image of height one
     // block preceded by a header defining the location and size of each region. the coordinates and
@@ -265,7 +286,7 @@ static void updateExistingClient (ws_cli_conn_t *client)
     if (n_bloks != (chg0-chg_regns)/BLOK_NBYTES)        // assert
         bye ("live regions %d != %d\n", n_bloks, (int)((chg0-chg_regns)/BLOK_NBYTES));
 
-    if (live_verbose > 1) {
+    if (debugLevel (DEBUG_WEB, 2)) {
         struct timeval tv1;
         gettimeofday (&tv1, NULL);
         Serial.printf ("LIVE: client %s: built %d regions from %d blocks in %ld usec\n",
@@ -287,7 +308,7 @@ static void updateExistingClient (ws_cli_conn_t *client)
         hdr[4+3*i] = locs[i].x;
         hdr[5+3*i] = locs[i].y;
         hdr[6+3*i] = locs[i].l;
-        if (live_verbose > 2)
+        if (debugLevel (DEBUG_WEB, 3))
             Serial.printf ("   %d,%d %dx%d\n", locs[i].x*BLOK_W, locs[i].y*BLOK_H, locs[i].l*BLOK_W, BLOK_H);
     }
 
@@ -300,14 +321,14 @@ static void updateExistingClient (ws_cli_conn_t *client)
     stbi_write_png_to_func (wifiSTBWrite_helper, client, BLOK_W*n_bloks, BLOK_H,
                             COMP_RGB, chg_regns, BLOK_WBYTES*n_bloks);
 
-    if (live_verbose > 1) {
+    if (debugLevel (DEBUG_WEB, 2)) {
         struct timeval tv1;
         gettimeofday (&tv1, NULL);
         Serial.printf ("LIVE: client %s: write hdr %d bytes and update took %ld usec\n",
                         ws_getaddress(client), hdr_l, TVDELUS (tv0,tv1));
     }
 
-    if (live_verbose > 1)
+    if (debugLevel (DEBUG_WEB, 2))
         Serial.printf ("LIVE: client %s: sent update with %d regions %d blocks\n",
                         ws_getaddress(client), n_regns, n_bloks);
 
@@ -333,7 +354,7 @@ static void sendClientPNG (ws_cli_conn_t *client)
     stbi_write_png_compression_level = 2;       // faster with hardly any increase in size
     stbi_write_png_to_func (wifiSTBWrite_helper, client, BUILD_W, BUILD_H, COMP_RGB, pixels, LIVE_RBYTES);
 
-    if (live_verbose)
+    if (debugLevel (DEBUG_WEB, 1))
         Serial.printf ("LIVE: client %s: sent full PNG\n", ws_getaddress(client));
 }
 
@@ -367,9 +388,11 @@ static void getLivePNG (ws_cli_conn_t *client, char args[], size_t args_len)
 }
 
 /* client running liveweb-html.cpp is asking for incremental screen update.
- * we might also send a message to enable fullscreen once ready from setup.cpp. must be sent continuously
- *   because we can't tell when user reloaded their page.
- * we might also try to open liveweb_openurl
+ * we might also:
+ *   send a message to enable fullscreen once ready from setup.cpp. must be sent continuously
+ *     because we can't tell when user reloaded their page;
+ *   send a command to the browser to open liveweb_openurl
+ *   timeout if reach inactivity limit
  */
 static void getLiveUpdate (ws_cli_conn_t *client, char args[], size_t args_len)
 {
@@ -380,13 +403,38 @@ static void getLiveUpdate (ws_cli_conn_t *client, char args[], size_t args_len)
     if (liveweb_fs_ready && getWebFullScreen())
         sendFullScreen (client);
 
-    // inform to open a URL -- N.B. free and set to NULL after making attempt
-    if (liveweb_openurl) {
-        sendURL (client, liveweb_openurl);
-        free (liveweb_openurl);
-        liveweb_openurl = NULL;
+    // check for pending openurl if this client did a touch
+    if (lastest_ws_touch_client == client) {
+        pthread_mutex_lock (&lw_url_lock);
+        if (liveweb_openurl) {
+            Serial.printf ("LIVE: sending URL %s\n", liveweb_openurl);
+            sendURL (client, liveweb_openurl);
+            free (liveweb_openurl);
+            liveweb_openurl = NULL;
+            lastest_ws_touch_client = NULL;
+        }
+        pthread_mutex_unlock (&lw_url_lock);
     }
 
+    // close if time out
+    if (liveweb_to) {
+        // N.B. beware first connection before time is available
+        time_t n = myNow();
+        if (n > 0) {
+            if (client->action_t == 0) {
+                Serial.printf ("LIVE: reset session start to %ld\n", (long)n);
+                client->action_t = n;
+            }
+            if (n - client->action_t > liveweb_to*60) {         // mins to secs
+                Serial.printf ("LIVE: session timeout at %ld\n", (long)n);
+                ws_sendframe_txt (client, "Session timed out"); // N.B. must match liveweb html
+                ws_close_client (client);
+                return;
+            }
+        }
+    }
+
+    // finally: what we came here for :-)
     updateExistingClient (client);
 }
 
@@ -394,17 +442,20 @@ static void getLiveUpdate (ws_cli_conn_t *client, char args[], size_t args_len)
  */
 static void setLiveChar (ws_cli_conn_t *client, char args[], size_t args_len)
 {
-    (void)client;
-
-    // ignore if no_web_touch
-    if (no_web_touch) {
-        Serial.printf ("Ignoring set_char\n");
+    // ignore if this is from the r/o port
+    if (client->port == liveweb_ro_port) {
+        if (debugLevel (DEBUG_WEB, 1))
+            Serial.printf ("LIVE: ignoring setLiveChar on r/o port %d\n", liveweb_ro_port);
         return;
     }
+
+    // update action time
+    client->action_t = myNow();
 
     WebArgs wa;
     wa.nargs = 0;
     wa.name[wa.nargs++] = "char";
+    wa.name[wa.nargs++] = "mod";
 
     // parse
     if (!parseWebCommand (wa, args, args_len)) {
@@ -415,9 +466,13 @@ static void setLiveChar (ws_cli_conn_t *client, char args[], size_t args_len)
 
         Serial.printf ("LIVE: set_char missing char\n");
 
+    } else if (!wa.found[1]) {
+
+        Serial.printf ("LIVE: set_char missing mod\n");
+
     } else {
 
-        // engage the given character as if typed
+        // decode char
 
         const char *str = wa.value[0];
         int strl = strlen(str);
@@ -425,15 +480,25 @@ static void setLiveChar (ws_cli_conn_t *client, char args[], size_t args_len)
         if (strl > 1) {
             // one of a named set
             if (strcmp (str, "Escape") == 0)
-                c = 27;
+                c = CHAR_ESC;
             else if (strcmp (str, "Enter") == 0 || strcmp (str, "Return") == 0)
-                c = '\n';
+                c = CHAR_NL;
             else if (strcmp (str, "Tab") == 0)
-                c = '\t';
-            else if (strcmp (str, "Backspace") == 0 || strcmp (str, "Delete") == 0)
-                c = '\b';
+                c = CHAR_TAB;
+            else if (strcmp (str, "Delete") == 0)
+                c = CHAR_DEL;
+            else if (strcmp (str, "Backspace") == 0)
+                c = CHAR_BS;
             else if (strcmp (str, "Space") == 0)
-                c = ' ';
+                c = CHAR_SPACE;
+            else if (strcmp (str, "ArrowLeft") == 0)
+                c = CHAR_LEFT;
+            else if (strcmp (str, "ArrowDown") == 0)
+                c = CHAR_DOWN;
+            else if (strcmp (str, "ArrowUp") == 0)
+                c = CHAR_UP;
+            else if (strcmp (str, "ArrowRight") == 0)
+                c = CHAR_RIGHT;
             else
                 Serial.printf ("LIVE: Unknown char name: %s\n", str);
         } else {
@@ -444,11 +509,15 @@ static void setLiveChar (ws_cli_conn_t *client, char args[], size_t args_len)
                 c = str[0];
         }
 
+        // decode mod
+        bool ctrl = strchr (wa.value[1], 'C') != NULL;
+        bool shift = strchr (wa.value[1], 'S') != NULL;
+
         if (c) {
 
             // insert into getChar queue
-            tft.putChar(c);
-            if (live_verbose)
+            tft.putChar (c, ctrl, shift);
+            if (debugLevel (DEBUG_WEB, 1))
                 Serial.printf ("LIVE: set_char %d %c\n", c, c);
         }
     }
@@ -458,20 +527,22 @@ static void setLiveChar (ws_cli_conn_t *client, char args[], size_t args_len)
  */
 static void setLiveTouch (ws_cli_conn_t *client, char args[], size_t args_len)
 {
-    (void)client;
-
-    // ignore if no_web_touch
-    if (no_web_touch) {
-        Serial.printf ("Ignoring set_touch\n");
+    // ignore if this is from the r/o port
+    if (client->port == liveweb_ro_port) {
+        if (debugLevel (DEBUG_WEB, 1))
+            Serial.printf ("LIVE: ignoring setLiveTouch on r/o port %d\n", liveweb_ro_port);
         return;
     }
+
+    // update action time
+    client->action_t = myNow();
 
     // define all possible args
     WebArgs wa;
     wa.nargs = 0;
     wa.name[wa.nargs++] = "x";
     wa.name[wa.nargs++] = "y";
-    wa.name[wa.nargs++] = "hold";
+    wa.name[wa.nargs++] = "button";
 
     // parse
     if (!parseWebCommand (wa, args, args_len)) {
@@ -492,16 +563,16 @@ static void setLiveTouch (ws_cli_conn_t *client, char args[], size_t args_len)
 
         } else {
 
-            // hold is optional
-            int h = wa.found[2] ? atoi(wa.value[2]) : 0;
-
             // inform checkTouch() to use wifi_tt_s; it will reset
+            int button = wa.found[2] ? atoi (wa.value[2]) : 0;
             wifi_tt_s.x = x;
             wifi_tt_s.y = y;
-            wifi_tt = h ? TT_HOLD : TT_TAP;
+            wifi_tt = button ? TT_TAP_BX : TT_TAP;              // 0 means button 1 -- go figure
 
-            if (live_verbose)
-                Serial.printf ("LIVE: set_touch %d %d %d\n", wifi_tt_s.x, wifi_tt_s.y, wifi_tt);
+            // record this client as the latest to do a touch
+            lastest_ws_touch_client = client;
+
+            Serial.printf ("LIVE: set_touch %d %d with %d\n", wifi_tt_s.x, wifi_tt_s.y, button);
         }
     }
 }
@@ -510,7 +581,12 @@ static void setLiveTouch (ws_cli_conn_t *client, char args[], size_t args_len)
  */
 static void setLiveMouse (ws_cli_conn_t *client, char args[], size_t args_len)
 {
-    (void)client;
+    // ignore if this is from the r/o port
+    if (client->port == liveweb_ro_port) {
+        if (debugLevel (DEBUG_WEB, 1))
+            Serial.printf ("LIVE: ignoring setLiveMouse on r/o port %d\n", liveweb_ro_port);
+        return;
+    }
 
     WebArgs wa;
     wa.nargs = 0;
@@ -532,7 +608,7 @@ static void setLiveMouse (ws_cli_conn_t *client, char args[], size_t args_len)
         int x = atoi(wa.value[0]);
         int y = atoi(wa.value[1]);
         tft.setMouse (x, y);
-        if (live_verbose)
+        if (debugLevel (DEBUG_WEB, 1))
             Serial.printf ("LIVE: set_mouse %d %d\n", x, y);
             
     }
@@ -550,7 +626,7 @@ static void sendLiveHTML (FILE *sockfp)
     // send page
     fprintf (sockfp, "%s\r\n", live_html);
 
-    if (live_verbose)
+    if (debugLevel (DEBUG_WEB, 1))
         Serial.printf ("LIVE: sent live.html\n");
 }
 
@@ -566,12 +642,12 @@ static void sendLiveFavicon (FILE *sockfp)
     // send icon
     writeFavicon (sockfp);
 
-    if (live_verbose)
+    if (debugLevel (DEBUG_WEB, 1))
         Serial.printf ("LIVE: sent favicon\n");
 }
 
 /* callback when browser asks for a new websocket connection.
- * assign a fresh si_list for keeping track of the pixels for the given client.
+ * assign a fresh si_list for keeping track its pixels.
  */
 static void ws_onopen(ws_cli_conn_t *client)
 {
@@ -605,6 +681,7 @@ static void ws_onopen(ws_cli_conn_t *client)
             memset (new_sip, 0, sizeof (*new_sip));
         } else {
             Serial.printf ("LIVE: hit max %d connections\n", liveweb_max);
+            ws_sendframe_txt (client, "Too many connections");  // N.B. must match liveweb html
             ws_close_client (client);
         }
     }
@@ -615,6 +692,18 @@ static void ws_onopen(ws_cli_conn_t *client)
         new_sip->pixels = (uint8_t *) malloc (LIVE_NBYTES);
         if (!new_sip->pixels)
             bye ("No memory for new live session pixels\n");
+
+        // increment appropriate counter
+        if (client->port == liveweb_ro_port) {
+            n_roweb += 1;
+            Serial.printf ("LIVE: new RO session %d from %s now running\n", n_roweb, ws_getaddress(client));
+        } else {
+            n_rwweb += 1;
+            Serial.printf ("LIVE: new RW session %d from %s now running\n", n_rwweb, ws_getaddress(client));
+        }
+
+        // init user action time
+        client->action_t = myNow();
     }
 
     // ok
@@ -625,23 +714,32 @@ static void ws_onopen(ws_cli_conn_t *client)
  */
 static void ws_onclose (ws_cli_conn_t *client)
 {
-    Serial.printf ("LIVE: client %s: disconnected\n", ws_getaddress(client));
-
     // remove from si_list
     for (int i = 0; i < si_n; i++) {
         SessionInfo *sip = &si_list[i];
         if (sip->client == client) {
             sip->client = NULL;
+
             // recycle pixel memory
             if (sip->pixels) {
                 free (sip->pixels);
                 sip->pixels = NULL;
             }
+
+            // decrement appropriate counter
+            if (client->port == liveweb_ro_port) {
+                n_roweb -= 1;
+                Serial.printf ("LIVE: RO client %s disconnected, now %d\n", ws_getaddress(client), n_roweb);
+            } else {
+                n_rwweb -= 1;
+                Serial.printf ("LIVE: RW client %s disconnected, now %d\n", ws_getaddress(client), n_rwweb);
+            }
+
             return;
         }
     }
 
-    // if get here, client was not found in si_list -- usually just because we closed because too many 
+    // if get here, client was not found in si_list -- usually just because closed because too many open
     // Serial.printf ("LIVE: client %s: disappeared after closing websocket\n", ws_getaddress(client));
 }
 
@@ -649,6 +747,9 @@ static void ws_onclose (ws_cli_conn_t *client)
  */
 static void ws_onmessage (ws_cli_conn_t *client, const unsigned char *msg, uint64_t size, int type)
 {
+    // unused
+    (void)type;
+
     // list of core commands
     static struct {
         const char *cmd_name;
@@ -674,7 +775,7 @@ static void ws_onmessage (ws_cli_conn_t *client, const unsigned char *msg, uint6
         const char *cmd_name = commands[i].cmd_name;
         size_t cmd_name_len = strlen(cmd_name);
         if (strncmp (cmd, cmd_name, cmd_name_len) == 0) {
-            if (live_verbose > 1)
+            if (debugLevel (DEBUG_WEB, 2))
                 Serial.printf ("LIVE: running %s\n", cmd);
             char *args = cmd + cmd_name_len;
             (*commands[i].cmd_fp) (client, args, strlen(args));
@@ -699,7 +800,7 @@ static void ws_not (FILE *sockfp, const char *header)
         return;
     }
 
-    if (live_verbose)
+    if (debugLevel (DEBUG_WEB, 1))
         Serial.printf ("LIVE: ws_not GET %s\n", fn);
 
     // dispatch according to GET file
@@ -726,10 +827,14 @@ void initLiveWeb (bool verbose)
 
         // just report
 
-        if (liveweb_port > 0)
-            tftMsg (verbose, 0, "Live Web port %d max %d", liveweb_port, liveweb_max);
+        if (liveweb_rw_port > 0)
+            tftMsg (verbose, 0, "Live R/W Web port %d max %d", liveweb_rw_port, liveweb_max);
         else
-            tftMsg (verbose, 0, "Live Web server disabled");
+            tftMsg (verbose, 0, "Live R/W Web server disabled");
+        if (liveweb_ro_port > 0)
+            tftMsg (verbose, 0, "Live R/O Web port %d max %d", liveweb_ro_port, liveweb_max);
+        else
+            tftMsg (verbose, 0, "Live R/O Web server disabled");
 
     } else {
 
@@ -741,21 +846,63 @@ void initLiveWeb (bool verbose)
         signal (SIGPIPE, SIG_IGN);
 
         // actually start stuff unless not wanted
-        if (liveweb_port < 0) {
-            if (live_verbose)
-                Serial.printf ("LIVE: live web is disabled\n");
+
+        // R/W service
+        if (liveweb_rw_port < 0) {
+            if (debugLevel (DEBUG_WEB, 1))
+                Serial.printf ("LIVE: R/W live web is disabled\n");
         } else {
-            // start websocket server
             struct ws_events evs;
             evs.onopen    = ws_onopen;
             evs.onclose   = ws_onclose;
             evs.onmessage = ws_onmessage;
             evs.onnonws   = ws_not;
-            ws_socket (&evs, liveweb_port, 1, 1000);
-            if (live_verbose)
-                Serial.printf ("LIVE: started server thread on port %d\n", liveweb_port);
+            ws_socket (&evs, liveweb_rw_port, 1, 1000);
+            if (debugLevel (DEBUG_WEB, 1))
+                Serial.printf ("LIVE: started r/w server thread on port %d\n", liveweb_rw_port);
         }
+
+        // R/O service
+        if (liveweb_ro_port < 0) {
+            if (debugLevel (DEBUG_WEB, 1))
+                Serial.printf ("LIVE: R/O live web is disabled\n");
+        } else {
+            struct ws_events evs;
+            evs.onopen    = ws_onopen;
+            evs.onclose   = ws_onclose;
+            evs.onmessage = ws_onmessage;
+            evs.onnonws   = ws_not;
+            ws_socket (&evs, liveweb_ro_port, 1, 1000);
+            if (debugLevel (DEBUG_WEB, 1))
+                Serial.printf ("LIVE: started r/o server thread on port %d\n", liveweb_ro_port);
+        }
+
+        // log timeout, if any
+        if (liveweb_to > 0)
+            Serial.printf ("LIVE: timeout set to %d minutes\n", liveweb_to);
     }
 }
 
-#endif // _IS_UNIX
+/* record desire to open the given url.
+ * client to which it will be sent will be most recent to have done a set_touch.
+ */
+void openLiveWebURL (const char *url)
+{
+    // replace liveweb_openurl
+
+    pthread_mutex_lock (&lw_url_lock);
+    if (liveweb_openurl) {
+        Serial.printf ("LIVE: discarded late URL %s\n", liveweb_openurl);
+        free (liveweb_openurl);
+    }
+    liveweb_openurl = strdup (url);
+    Serial.printf ("LIVE: live web staging URL %s\n", url);
+    pthread_mutex_unlock (&lw_url_lock);
+}
+
+/* return whether there is a pending set_touch
+ */
+bool isLiveWebTouch (void)
+{
+    return (lastest_ws_touch_client != NULL);
+}

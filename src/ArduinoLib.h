@@ -25,6 +25,16 @@
 #if defined(__FreeBSD__)
   #define _IS_FREEBSD
 #endif
+
+#if defined (__APPLE__)
+    #define _IS_APPLE
+    #if defined(__aarch64__) || defined(__arm64__)
+        #define _IS_APPLE_M
+    #else
+        #define _IS_APPLE_x86
+    #endif
+#endif
+
     
 #if (defined(__arm__) || defined(__aarch64__)) && defined(_IS_LINUX)
   #if defined(__has_include)
@@ -34,9 +44,7 @@
   #endif
 #endif
     
-#if defined(_IS_ESP8266)
-  #define _I2C_ESP
-#elif defined(__has_include)
+#if defined(__has_include)
   #if defined(_IS_FREEBSD) && __has_include(<dev/iicbus/iic.h>)
     #define _NATIVE_I2C_FREEBSD
   #elif defined(_IS_LINUX) && (__has_include(<linux/i2c-dev.h>) || __has_include("linux/i2c-dev.h"))
@@ -44,9 +52,7 @@
   #endif
 #endif
 
-#if defined(_IS_ESP8266)
-  #define _NATIVE_GPIO_ESP
-#elif defined(__has_include)
+#if defined(__has_include)
   #if defined(_IS_FREEBSD)
     #if __has_include(<libgpio.h>)
         #define _NATIVE_GPIO_FREEBSD
@@ -56,7 +62,7 @@
   #elif defined(_IS_LINUX)
     // be prepared for either gpiod or legacy broadcom memory map interface
     #if __has_include(<gpiod.h>)
-        #include <gpiod.hpp>
+        #include <gpiod.h>
         #define _NATIVE_GPIO_LINUX              // set for either GPIOD or GPIOBC
         #define _NATIVE_GPIOD_LINUX             // gpiod is sufficiently mature to use
     #endif
@@ -74,24 +80,92 @@
 
 // tcp ports
 #define RESTFUL_PORT    8080    
-#define LIVEWEB_PORT    8081    
+#define LIVEWEB_RW_PORT 8081    
+#define LIVEWEB_RO_PORT 8082    
+
+// character codes for tft.get/putChar(), mostly ASCII control plus a few more
+#define CHAR_NONE       0
+#define CHAR_BS         '\b'
+#define CHAR_TAB        '\t'
+#define CHAR_NL         '\n'
+#define CHAR_CR         '\r'
+#define CHAR_SPACE      ' '
+#define CHAR_ESC        ((char)27)
+#define CHAR_DEL        ((char)127)
+#define CHAR_LEFT       ((char)-1)
+#define CHAR_DOWN       ((char)-2)
+#define CHAR_UP         ((char)-3)
+#define CHAR_RIGHT      ((char)-4)
+
+// settings for gray scale display
+typedef enum {
+    GRAY_OFF,
+    GRAY_ALL,
+    GRAY_MAP,
+} GrayDpy_t;
 
 
+// convert 8-bit each (R,G,B) to 5R : 6G : 5G
+// would expect this to be in graphics lib but can't find it...
+#define RGB565(R,G,B)   (uint16_t)(((((uint16_t)(R) & 0xF8) << 8) | (((uint16_t)(G) & 0xFC) << 3) | ((uint16_t)(B) >> 3)))
+
+// extract 8-bit colors from uint16_t RGB565 color in range 0-255
+#define RGB565_R(c)     (255*(((c) & 0xF800) >> 11)/((1<<5)-1))
+#define RGB565_G(c)     (255*(((c) & 0x07E0) >> 5)/((1<<6)-1))
+#define RGB565_B(c)     (255*((c) & 0x001F)/((1<<5)-1))
+
+// #define RGB2GRAY(r,g,b) ((r)*0.26F + (g)*0.65F + (b)*0.09F)
+#define RGB2GRAY(r,g,b) ((r)/4 + 2*(g)/3 + (b)/12)      // faster??
+
+/* define debug subsystems
+ */
+#define DEBUG_SUBSYS                        \
+    X(DEBUG_ADIF,       "ADIF")             \
+    X(DEBUG_BC,         "BigClock")         \
+    X(DEBUG_CONTESTS,   "contests")         \
+    X(DEBUG_DXC,        "dxcluster")        \
+    X(DEBUG_GIMBAL,     "gimbal")           \
+    X(DEBUG_IO,         "io")               \
+    X(DEBUG_WEB,        "live-web")         \
+    X(DEBUG_MENUS,      "menus")            \
+    X(DEBUG_NMEA,       "NMEA")             \
+    X(DEBUG_NVRAM,      "NVRAM")            \
+    X(DEBUG_NET,        "network")          \
+    X(DEBUG_RADIO,      "radio")            \
+    X(DEBUG_SCROLL,     "scroller")         \
+    X(DEBUG_WL,         "watchlist")        \
+    X(DEBUG_WX,         "wx")               \
+    X(DEBUG_ZONES,      "zones")
+
+#define X(a,b) a,               // expands DEBUG_SUBSYS to each enum and comma
+typedef enum {
+    DEBUG_SUBSYS
+    DEBUG_SUBSYS_N
+} DebugSubsys;
+#undef X
+
+extern bool debugLevel (DebugSubsys s, int level);
+extern bool setDebugLevel (const char *name, int level);
+extern void getDebugs (const char *names[DEBUG_SUBSYS_N], int levels[DEBUG_SUBSYS_N]);
+
+
+
+// glue
 extern void setX11FullScreen (bool);
 extern void setDemoMode(bool on);
 extern void setCenterLng (int16_t l);
 extern const char *backend_host;
 extern int backend_port;
-extern int liveweb_port;
+extern int liveweb_ro_port;
+extern int liveweb_rw_port;
 extern int liveweb_max;
+extern int liveweb_to;
 extern const int liveweb_maxmax;
 extern int restful_port;
 extern bool skip_skip;
 extern bool init_iploc;
 extern bool want_kbcursor;
-extern bool no_web_touch;
 extern const char *init_locip;
-extern int gimbal_trace_level;
 extern time_t usr_datetime;
 extern const char *getI2CFilename(void);
 extern bool GPIOOk(void);
@@ -99,6 +173,10 @@ extern const char *hc_version;
 extern std::string our_dir;
 extern void doExit(void);
 extern bool testPassword (const char *category, const char *candidate_pw);
+extern const char *pw_file;
+extern void NVReadX11Geom (int &x, int &y, int &w, int &h);
+extern void NVWriteX11Geom (int x, int y, int w, int h);
+
 
 #define N_DIAG_FILES 4
 extern const char *diag_files[N_DIAG_FILES];

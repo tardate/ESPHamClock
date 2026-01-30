@@ -251,24 +251,10 @@ uint16_t color, float y_min, float y_max, char *label_str)
         tft.print (label_str);
     }
 
-    // printFreeHeap (F("plotXYstr"));
+    // printFreeHeap ("plotXYstr");
 
     // ok
     return (true);
-}
-
-/* shorten str IN PLACE as needed to be less that maxw pixels wide.
- * return final width in pixels.
- */
-uint16_t maxStringW (char *str, uint16_t maxw)
-{
-    uint8_t strl = strlen (str);
-    uint16_t bw = 0;
-
-    while (strl > 0 && (bw = getTextWidth(str)) >= maxw)
-        str[--strl] = '\0';
-
-    return (bw);
 }
 
 /* print weather info in the given box
@@ -290,8 +276,8 @@ void plotWX (const SBox &box, uint16_t color, const WXInfo &wi)
     // large temperature with degree symbol and units
     tft.setTextColor(color);
     selectFontStyle (BOLD_FONT, LARGE_FONT);
-    f = useMetricUnits() ? wi.temperature_c : CEN2FAH(wi.temperature_c);
-    snprintf (buf, sizeof(buf), "%.0f %c", f, useMetricUnits() ? 'C' : 'F');
+    f = showTempC() ? wi.temperature_c : CEN2FAH(wi.temperature_c);
+    snprintf (buf, sizeof(buf), "%.0f %c", f, showTempC() ? 'C' : 'F');
     w = maxStringW (buf, box.w-attr_w);
     tft.setCursor (box.x+(box.w-attr_w-w)/2, box.y+dy);
     tft.print(buf);
@@ -318,10 +304,10 @@ void plotWX (const SBox &box, uint16_t color, const WXInfo &wi)
         // main info line
 
         selectFontStyle (LIGHT_FONT, SMALL_FONT);
-        if (useMetricUnits())
-            snprintf (buf, sizeof(buf), _FX("%.0f%% %.0f"), wi.humidity_percent, wi.pressure_hPa);
+        if (showATMhPa())
+            snprintf (buf, sizeof(buf), "%.0f%% %.0f", wi.humidity_percent, wi.pressure_hPa);
         else
-            snprintf (buf, sizeof(buf), _FX("%.0f%% %.2f"), wi.humidity_percent, wi.pressure_hPa/33.8639);
+            snprintf (buf, sizeof(buf), "%.0f%% %.2f", wi.humidity_percent, HPA2INHG(wi.pressure_hPa));
         w = maxStringW (buf, box.w-attr_w-PCHG_W-PCHG_LW-2*PCHG_LG);
         tft.setCursor (box.x+(box.w-attr_w-w-PCHG_W-PCHG_LW-2*PCHG_LG)/2, box.y+dy);
         tft.print (buf);
@@ -331,7 +317,7 @@ void plotWX (const SBox &box, uint16_t color, const WXInfo &wi)
         uint16_t pchg_x = tft.getCursorX() + PCHG_LG;
         uint16_t pchg_y = tft.getCursorY() - PCHG_H - 1;
         selectFontStyle (LIGHT_FONT, FAST_FONT);
-        if (useMetricUnits()) {
+        if (showATMhPa()) {
             tft.setCursor (pchg_x, pchg_y); tft.print ("h");
             tft.setCursor (pchg_x, pchg_y+8); tft.print ("P");
             tft.setCursor (pchg_x, pchg_y+14); tft.print ("a");
@@ -363,10 +349,10 @@ void plotWX (const SBox &box, uint16_t color, const WXInfo &wi)
         // no pressure change symbol
 
         selectFontStyle (LIGHT_FONT, SMALL_FONT);
-        if (useMetricUnits())
-            snprintf (buf, sizeof(buf), _FX("%.0f%% %.0f hPa"), wi.humidity_percent, wi.pressure_hPa);
+        if (showATMhPa())
+            snprintf (buf, sizeof(buf), "%.0f%% %.0f hPa", wi.humidity_percent, wi.pressure_hPa);
         else
-            snprintf (buf, sizeof(buf), _FX("%.0f%% %.2f in"), wi.humidity_percent, wi.pressure_hPa/33.8639);
+            snprintf (buf, sizeof(buf), "%.0f%% %.2f in", wi.humidity_percent,HPA2INHG(wi.pressure_hPa));
         w = maxStringW (buf, box.w-attr_w);
         tft.setCursor (box.x+(box.w-attr_w-w)/2, box.y+dy);
         tft.print (buf);
@@ -376,12 +362,12 @@ void plotWX (const SBox &box, uint16_t color, const WXInfo &wi)
 
     // wind
     selectFontStyle (LIGHT_FONT, SMALL_FONT);
-    f = (useMetricUnits() ? 3.6 : 2.237) * wi.wind_speed_mps; // kph or mph
-    snprintf (buf, sizeof(buf), _FX("%s @ %.0f %s"), wi.wind_dir_name, f, useMetricUnits() ? "kph" : "mph");
+    f = (showDistKm() ? 3.6 : 2.237) * wi.wind_speed_mps; // kph or mph
+    snprintf (buf, sizeof(buf), "%s @ %.0f %s", wi.wind_dir_name, f, showDistKm() ? "kph" : "mph");
     w = maxStringW (buf, box.w-attr_w);
     if (buf[strlen(buf)-1] != 'h') {
         // try shorter string in case of huge speed
-        snprintf (buf, sizeof(buf),_FX("%s @ %.0f%s"), wi.wind_dir_name, f, useMetricUnits() ? "k/h" : "m/h");
+        snprintf (buf, sizeof(buf),"%s @ %.0f%s", wi.wind_dir_name, f, showDistKm() ? "k/h" : "m/h");
         w = maxStringW (buf, box.w-attr_w);
     }
     tft.setCursor (box.x+(box.w-attr_w-w)/2, box.y+dy);
@@ -403,7 +389,7 @@ void plotWX (const SBox &box, uint16_t color, const WXInfo &wi)
         tft.print (wi.attribution[i]);
     }
 
-    // printFreeHeap (F("plotWX"));
+    // printFreeHeap ("plotWX");
 }
 
 
@@ -411,7 +397,7 @@ void plotWX (const SBox &box, uint16_t color, const WXInfo &wi)
  *   1. when called by updateBandConditions(), we are given a table containing relative propagation values
  *      for each band and a summary line to be drawn across the bottom.
  *   2. we can also be called just to update annotation as indicated by bmp or cfg_str being NULL. In this
- *      case we only draw the band indicators showing prop_map according to busy with the others normal
+ *      case we only draw the band indicators in toa/rel_band according to busy with the others normal
  *      and we redraw the time line according to bc_utc_tl.
  * bmp is a matrix of 24 rows of UTC 0 .. 23, 8 columns of bands 80-40-30-20-17-15-12-10.
  * we draw the matrix rotated so rows go up from 80 and cols start on the left at the current DE hour.
@@ -427,19 +413,19 @@ void plotBandConditions (const SBox &box, int busy, const BandCdtnMatrix *bmp, c
     #define PFONT_W 7                                   // plot labels font width
     #define PLOT_ROWS BMTRX_COLS                        // plot rows
     #define PLOT_COLS BMTRX_ROWS                        // plot columns
-    #define TOP_B 27                                    // top border -- match VOACAP
-    #define PGAP 5                                      // gap between title and plot
+    #define TOP_B PANETITLE_H                           // top border
     #define PBOT_B 20                                   // plot bottom border -- room for config and time
-    #define PLEFT_B 22                                  // left border -- room for band
-    #define PRIGHT_B 2                                  // right border
-    #define PTOP_Y (box.y + TOP_B + PGAP)               // plot top y
+    #define PLEFT_B 27                                  // left border -- room for band
+    #define PRIGHT_B 14                                 // right border
+    #define PTOP_Y (box.y + SUBTITLE_Y0)                // plot top y
     #define PBOT_Y (box.y+box.h-PBOT_B)                 // plot bottom y
     #define PLEFT_X (box.x + PLEFT_B)                   // plot left x
-    #define PRIGHT_X (box.x+box.w-PRIGHT_B-1)           // plot right x
-    #define PLOT_W (PRIGHT_X - PLEFT_X)                 // plot width
+    #define PRIGHT_X (box.x+box.w-PRIGHT_B)             // plot right x
+    #define PLOT_W (PRIGHT_X - PLEFT_X + 1)             // plot width
     #define PLOT_H (PBOT_Y - PTOP_Y)                    // plot height
-    #define PCOL_W (PLOT_W/PLOT_COLS-1)                 // plot column width
-    #define PROW_H (PLOT_H/PLOT_ROWS-1)                 // plot row height
+    #define PCOL_W (PLOT_W/PLOT_COLS)                 // plot column width
+    #define PROW_H (PLOT_H/PLOT_ROWS)                 // plot row height
+    #define RELTOA_COLOR RGB565(0x58,0xa0,0xc8)         // TOA/REL marker color
 
     // to help organize the matrix rotation, p_ variables refer to plot indices, m_ to matrix indices
 
@@ -450,30 +436,38 @@ void plotBandConditions (const SBox &box, int busy, const BandCdtnMatrix *bmp, c
     if (draw_all)
         prepPlotBox (box);
 
-    // label band names and indicate current voacap map, if any
+    // label band names and indicate current voacap band, if any
     selectFontStyle (LIGHT_FONT, FAST_FONT);
     tft.setTextColor(GRAY);
     for (int p_row = 0; p_row < PLOT_ROWS; p_row++) {
 
         // find row and desired bg color
         uint16_t y = PBOT_Y - PLOT_H*(p_row+1)/PLOT_ROWS;
-        uint16_t rect_col = (prop_map.active && p_row == (int)prop_map.band)
-                                ? (busy > 0 ? DYELLOW : (busy < 0 ? RA8875_RED : RA8875_WHITE))
+        bool toa_active = IS_CMROT(CM_PMTOA) && p_row == cm_info[CM_PMTOA].band;
+        bool rel_active = IS_CMROT(CM_PMREL) && p_row == cm_info[CM_PMREL].band;
+        uint16_t band_bg = (toa_active || rel_active)
+                                ? (busy > 0 ? RA8875_YELLOW : (busy < 0 ? RA8875_RED : RA8875_WHITE))
                                 : RA8875_BLACK;
 
-        // show
-        tft.fillRect (box.x+1, y+1, 2*PFONT_W, PFONT_H+3, rect_col);
-        tft.setCursor (box.x+2, y + 2);
-        tft.print (propMap2Band((PropMapBand)p_row));
+        // show band
+        tft.fillRect (box.x+1, y+1, 2*PFONT_W-1, PFONT_H+3, band_bg);
+        tft.setCursor (box.x+1, y + LISTING_OS);
+        tft.print (propBand2Band((PropMapBand)p_row));
+
+        // show whether REL
+        tft.fillCircle (PLEFT_X - PRIGHT_B/2, y+PROW_H/2, 3, rel_active ? RELTOA_COLOR : RA8875_BLACK);
+
+        // show whether TOA
+        tft.fillCircle (box.x + box.w - PRIGHT_B/2, y+PROW_H/2, 3, toa_active ? RELTOA_COLOR : RA8875_BLACK);
     }
 
     // find utc and DE hour now. these will be the matrix row in plot column 0.
     int utc_hour_now = hour (nowWO());
-    int de_hour_now = hour (nowWO() + de_tz.tz_secs);
+    int de_hour_now = hour (nowWO() + getTZ (de_tz));
     int hr_now = bc_utc_tl ? utc_hour_now : de_hour_now;
 
     // erase timeline if not drawing all (because prepPlotBox() already erased everything if draw_all)
-    uint16_t timeline_y = PBOT_Y+1;
+    uint16_t timeline_y = PBOT_Y+2;
     if (!draw_all)
         tft.fillRect (box.x + 1, timeline_y-1, box.w-2, PFONT_H+1, RA8875_BLACK);
 
@@ -511,7 +505,7 @@ void plotBandConditions (const SBox &box, int busy, const BandCdtnMatrix *bmp, c
     // center title across the top
     selectFontStyle (LIGHT_FONT, SMALL_FONT);
     tft.setTextColor(RA8875_WHITE);
-    const char *title = _FX("VOACAP DE-DX");
+    const char *title = "VOACAP DE-DX";
     uint16_t tw = getTextWidth (title);
     tft.setCursor (box.x+(box.w-tw)/2, box.y + TOP_B);
     tft.print ((char*)title);
@@ -554,25 +548,36 @@ void plotBandConditions (const SBox &box, int busy, const BandCdtnMatrix *bmp, c
     }
     for (int p_row = 0; p_row <= PLOT_ROWS; p_row++) {
         uint16_t y = PTOP_Y + PLOT_H*p_row/PLOT_ROWS;
-        tft.drawLine (PLEFT_X, y, PRIGHT_X, y, GRID_COLOR);
+        tft.drawLine (PLEFT_X, y, PRIGHT_X+1, y, GRID_COLOR);   // same y as box so extend to box edge
     }
 
 }
 
 /* print the NOAA RSG Space Weather Scales in the given box.
+ * return whether at least the data transaction was valid.
  */
-void plotNOAASWx (const SBox &box, const NOAASpaceWx &noaaspw)
+bool plotNOAASWx (const SBox &box)
 {
     resetWatchdog();
 
     // prep
     prepPlotBox (box);
 
+    // fetch
+    NOAASpaceWxData noaa;
+    if (!retrieveNOAASWx(noaa)) {
+        plotMessage (box, RA8875_RED, "NOAA connection failed");
+        return (false);
+    } else if (!noaa.data_ok) {
+        plotMessage (box, RA8875_RED, "NOAA data invalid");
+        return (true);                                  // transaction itself was ok
+    }
+
     // title
     tft.setTextColor(NOAASPW_COLOR);
     selectFontStyle (LIGHT_FONT, SMALL_FONT);
     uint16_t h = box.h/5-2;                             // text row height
-    const char *title = _FX("NOAA SpaceWx");
+    const char *title = "NOAA SpaceWx";
     uint16_t bw = getTextWidth (title);
     tft.setCursor (box.x+(box.w-bw)/2, box.y+h);
     tft.print (title);
@@ -584,17 +589,20 @@ void plotNOAASWx (const SBox &box, const NOAASpaceWx &noaaspw)
         h += box.h/4;
         tft.setCursor (box.x+w+(i==2?-2:0), box.y+h);   // tweak G to better center
         tft.setTextColor(GRAY);
-        tft.print (noaaspw.cat[i]);
+        tft.print (noaa.cat[i]);
 
         w += box.w/10;
         for (int j = 0; j < N_NOAASW_V; j++) {
-            int val = noaaspw.val[i][j];
+            int val = noaa.val[i][j];
             w += box.w/7;
             tft.setCursor (box.x+w, box.y+h);
             tft.setTextColor(val == 0 ? RA8875_GREEN : (val <= 3 ? RA8875_YELLOW : RA8875_RED));
             tft.print (val);
         }
     }
+
+    // ok
+    return (true);
 }
 
 
@@ -603,7 +611,7 @@ void plotNOAASWx (const SBox &box, const NOAASpaceWx &noaaspw)
 void plotMessage (const SBox &box, uint16_t color, const char *message)
 {
     // log
-    Serial.printf (_FX("PlotMsg: %s\n"), message);
+    Serial.printf ("PlotMsg: %s\n", message);
 
     // prep font
     selectFontStyle (BOLD_FONT, FAST_FONT);

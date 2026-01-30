@@ -40,9 +40,6 @@ Adafruit_MCP23X17::Adafruit_MCP23X17(void)
     // no MCP yet
     mcp_found = false;
 
-    // shh?
-    verbose = 0;
-
     #if defined(_NATIVE_GPIOD_LINUX)
 
         gpiochip = NULL;
@@ -206,9 +203,10 @@ bool Adafruit_MCP23X17::begin_I2C (uint8_t addr)
                     break;
             }
             gpiod_chip_iter_free_noclose (iter);        // leave most recent successful chip open, if any
-            if (gpiochip)
+            if (gpiochip) {
                 printf ("MCP: found %s\n", gpiod_chip_name(gpiochip));
-            else
+                any_ok = true;
+            } else
                 printf ("MCP: no suitable /dev/gpiochip found\n");
         }
 
@@ -265,7 +263,7 @@ void Adafruit_MCP23X17::pinMode (uint8_t mcp_pin, uint8_t mode)
 {
     LockIt lk;
 
-    if (verbose)
+    if (debugLevel (DEBUG_IO, 1))
         printf ("MCP: 0x%02X pinMode (%d, %d == %s)\n", my_addr, mcp_pin, mode,
                 mode == INPUT ? "INPUT"
                         : (mode == INPUT_PULLUP ? "INPUT_PULLUP"
@@ -455,7 +453,7 @@ uint8_t Adafruit_MCP23X17::digitalRead(uint8_t mcp_pin)
                 printf ("MCP: gpiod linux digitalRead(%d) failed: %s\n", mcp_pin, strerror(errno));
                 return (0xff);
             }
-            if (verbose)
+            if (debugLevel (DEBUG_IO, 1))
                 printf ("MCP: 0x%02X gpiod linux digitalRead (%d) => %d\n", my_addr, mcp_pin, val);
             return (val);
         }
@@ -474,7 +472,7 @@ uint8_t Adafruit_MCP23X17::digitalRead(uint8_t mcp_pin)
             }
 
             int val = (bc_gbase[13+rpi_pin/32] & (1UL<<(rpi_pin%32))) != 0;
-            if (verbose)
+            if (debugLevel (DEBUG_IO, 1))
                 printf ("MCP: broadcom linux digitalRead (%d) => %d\n", mcp_pin, val);
             return (val);
 
@@ -494,7 +492,7 @@ uint8_t Adafruit_MCP23X17::digitalRead(uint8_t mcp_pin)
             }
 
             uint8_t val = gpio_pin_get (handle, rpi_pin) == GPIO_VALUE_HIGH ? 1 : 0;
-            if (verbose)
+            if (debugLevel (DEBUG_IO, 1))
                 printf ("MCP: 0x%02X freebsd digitalRead (%d) => %d\n", my_addr, mcp_pin, val);
             return (val);
 
@@ -538,7 +536,7 @@ uint8_t Adafruit_MCP23X17::digitalRead(uint8_t mcp_pin)
                 return (0xff);
             }
             uint8_t val = (olat_val & olat_mask) != 0;
-            if (verbose)
+            if (debugLevel (DEBUG_IO, 1))
                 printf ("MCP: 0x%02X digitalRead (%d) => %d\n", my_addr, mcp_pin, val);
             return (val);
         }
@@ -555,7 +553,7 @@ void Adafruit_MCP23X17::digitalWrite(uint8_t mcp_pin, uint8_t value)
 {
     LockIt lk;
 
-    if (verbose)
+    if (debugLevel (DEBUG_IO, 1))
         printf ("MCP: 0x%02X digitalWrite (%d,%d)\n", my_addr, mcp_pin, value);
 
     #if defined(_NATIVE_GPIOD_LINUX)
@@ -606,7 +604,7 @@ void Adafruit_MCP23X17::digitalWrite(uint8_t mcp_pin, uint8_t value)
                 return;
             }
 
-            gpio_pin_set (handle, rpi_pin, value != 0);
+            gpio_pin_set (handle, rpi_pin, value ? GPIO_VALUE_HIGH : GPIO_VALUE_LOW);
         }
 
     #endif

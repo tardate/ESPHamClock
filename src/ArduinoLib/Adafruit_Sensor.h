@@ -20,12 +20,8 @@
 #ifndef _ADAFRUIT_SENSOR_H
 #define _ADAFRUIT_SENSOR_H
 
-#if ARDUINO >= 100
- #include "Arduino.h"
- #include "Print.h"
-#else
- #include "WProgram.h"
-#endif
+#include "Arduino.h"
+#include "Print.h"
 
 /* Intentionally modeled after sensors.h in the Android API:
  * https://github.com/android/platform_hardware_libhardware/blob/master/include/hardware/sensors.h */
@@ -143,7 +139,7 @@ class Adafruit_Sensor {
   virtual ~Adafruit_Sensor() {}
 
   // These must be defined by the subclass
-  virtual void enableAutoRange(bool enabled) {};
+  virtual void enableAutoRange(bool enabled) {(void)enabled; };
   virtual bool getEvent(sensors_event_t*) = 0;
   virtual void getSensor(sensor_t*) = 0;
   

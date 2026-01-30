@@ -108,121 +108,30 @@ static void drawBeacon (NCDXFBeacon &nb)
     drawMapTag (nb.call, nb.call_b);
 }
 
-/* erase beacon
- * ESP only
- */
-static void eraseBeacon (NCDXFBeacon &nb)
-{
-
-#if defined (_IS_ESP8266)
-
-    resetWatchdog();
-
-    // redraw map under symbol
-    for (int8_t dy = -BEACONR; dy <= BEACONR/2; dy += 1) {
-        int8_t hw = 3*(dy+BEACONR)/5+1;
-        for (int8_t dx = -hw; dx <= hw; dx += 1)
-            drawMapCoord (nb.s.x+dx, nb.s.y+dy);
-    }
-
-    // redraw map under call
-    for (uint16_t y = nb.call_b.y; y < nb.call_b.y + nb.call_b.h; y++) {
-        for (uint16_t x = nb.call_b.x; x < nb.call_b.x + nb.call_b.w; x++)
-            drawMapCoord (x, y);
-    }
-
-#endif // _IS_ESP8266
-
-}
-
-#if defined (_IS_ESP8266)
-
-
-/* return whether the given point is anywhere inside a beacon symbol or call
- * ESP only
- */
-static bool overBeacon (const SCoord &s, const NCDXFBeacon &nb)
-{
-    // check call
-    if (inBox (s, nb.call_b))
-        return (true);
-
-    // check above or below symbol
-    if (s.y < nb.s.y - BEACONR || s.y > nb.s.y + BEACONR/2)
-        return (false);
-
-    // distance below top tip
-    uint16_t dy = s.y - (nb.s.y - BEACONR);
-
-    // width at this y (same as eraseBeacon)
-    int8_t hw = 3*dy/5+1;
-
-    // left or right
-    if (s.x < nb.s.x - hw || s.x > nb.s.x + hw)
-        return (false);
-
-    // yup
-    return (true);
-}
-
-/* return whether the given screen coord is over any visible map symbol or call sign box
- * ESP only
- */
-bool overAnyBeacon (const SCoord &s)
-{
-    if (!(brb_rotset & (1 << BRB_SHOW_BEACONS)))
-        return (false);
-
-    for (NCDXFBeacon *bp = blist; bp < &blist[NBEACONS]; bp++) {
-        if (bp->c == BCOL_S)
-            continue;
-        if (overBeacon (s, *bp))
-            return (true);
-    }
-
-    return (false);
-}
-
-#endif // _IS_ESP8266
-
-
 /* update map beacons, typically on each 10 second period unless immediate.
- * if erase_too then erase all beacons even if known to be off.
  */
-void updateBeacons (bool immediate, bool erase_too)
+void updateBeacons (bool immediate)
 {
     // counts as on as long as in rotation set, need not be in front now
     bool beacons_on = brb_rotset & (1 << BRB_SHOW_BEACONS);
+    if (!beacons_on)
+        return;
 
-    // process if immediate or (beacons are on and it's a new time period)
+    // process if immediate or it's a new time period
     static uint8_t prev_sec10;
     uint8_t sec10 = second(nowWO())/10;
-    if (!immediate && (!beacons_on || sec10 == prev_sec10))
+    if (!immediate && sec10 == prev_sec10)
         return;
     prev_sec10 = sec10;
 
-    resetWatchdog();
-
     // now update each beacon as required
-    bool erased_any = false;
     setBeaconStates();
     for (NCDXFBeacon *bp = blist; bp < &blist[NBEACONS]; bp++) {
-        if (bp->c == BCOL_S || !beacons_on) {
-            if (erase_too) {
-                eraseBeacon (*bp);
-                erased_any = true;
-            }
-        } else if (overMap(bp->s) && !overRSS (bp->call_b)) {
+        if (bp->c != BCOL_S && overMap(bp->s) && !overRSS (bp->call_b))
             drawBeacon (*bp);
-        }
     }
 
-    // draw other symbols in case erasing a beacon clobbered some -- beware recursion!
-    if (erased_any)
-        drawAllSymbols(false);
-
     updateClocks(false);
-
 }
 
 /* update screen location for all beacons.
@@ -259,35 +168,35 @@ static void drawBeaconKey()
     drawBeaconSymbol (s, c);
     tft.setTextColor (c);
     tft.setCursor (s.x+BEACONR, s.y-BEACONR/2);
-    tft.print (F("14.10"));
+    tft.print ("14.10");
 
     s.y += dy;
     c = BCOL_18;
     drawBeaconSymbol (s, c);
     tft.setTextColor (c);
     tft.setCursor (s.x+BEACONR, s.y-BEACONR/2);
-    tft.print (F("18.11"));
+    tft.print ("18.11");
 
     s.y += dy;
     c = BCOL_21;
     drawBeaconSymbol (s, c);
     tft.setTextColor (c);
     tft.setCursor (s.x+BEACONR, s.y-BEACONR/2);
-    tft.print (F("21.15"));
+    tft.print ("21.15");
 
     s.y += dy;
     c = BCOL_24;
     drawBeaconSymbol (s, c);
     tft.setTextColor (c);
     tft.setCursor (s.x+BEACONR, s.y-BEACONR/2);
-    tft.print (F("24.93"));
+    tft.print ("24.93");
 
     s.y += dy;
     c = BCOL_28;
     drawBeaconSymbol (s, c);
     tft.setTextColor (c);
     tft.setCursor (s.x+BEACONR, s.y-BEACONR/2);
-    tft.print (F("28.20"));
+    tft.print ("28.20");
 }
 
 /* draw any of the various contents in NCDXF_b depending on brb_mode.
@@ -310,8 +219,8 @@ bool drawNCDXFBox()
 
     case BRB_SHOW_SWSTATS:
 
-        (void) checkSpaceWx();
-        drawSpaceStats(RA8875_BLACK);
+        (void) checkForNewSpaceWx();
+        drawNCDXFSpcWxStats(RA8875_BLACK);
         break;
 
     case BRB_SHOW_BME76:        // fallthru
@@ -348,6 +257,7 @@ bool drawNCDXFBox()
 }
 
 /* common template to draw table of stats in NCDXF_b.
+ * divide NCDXF_b into NCDXF_B_NFIELDS equal regions vertically with titles near each bottom.
  * use white text and colors for each unless color is black in which case us it for everything.
  */
 void drawNCDXFStats (uint16_t color,
@@ -355,83 +265,29 @@ void drawNCDXFStats (uint16_t color,
                      const char values[NCDXF_B_NFIELDS][NCDXF_B_MAXLEN],
                      const uint16_t colors[NCDXF_B_NFIELDS])
 {
-    // prep layout
-    uint16_t y = NCDXF_b.y;
-    const int valurect_dy = -23;
-    const int valurect_h = 26;
+    // each box height and nice offsets down to value and title
+    const uint16_t h = NCDXF_b.h / NCDXF_B_NFIELDS;
+    const uint16_t vo = 24*h/37;                         // font baseline
+    const uint16_t to = 28*h/37;                         // font top
 
     // show each item
     for (int i = 0; i < NCDXF_B_NFIELDS; i++) {
 
-        y += 25;
+        // top height
+        uint16_t y = i * NCDXF_b.h / NCDXF_B_NFIELDS;
 
         selectFontStyle (LIGHT_FONT, SMALL_FONT);
         tft.setTextColor (color == RA8875_BLACK ? colors[i] : color);
-        tft.fillRect (NCDXF_b.x+1, y+valurect_dy, NCDXF_b.w-2, valurect_h, RA8875_BLACK);
-        // tft.drawRect (NCDXF_b.x+1, y+valurect_dy, NCDXF_b.w-2, valurect_h, RA8875_RED);
-        tft.setCursor (NCDXF_b.x + (NCDXF_b.w-getTextWidth(values[i]))/2, y);
+        tft.fillRect (NCDXF_b.x+1, y, NCDXF_b.w-2, h, RA8875_BLACK);
+        // tft.drawRect (NCDXF_b.x+1, y, NCDXF_b.w-2, h, RA8875_RED);              // RBF
+        tft.setCursor (NCDXF_b.x + (NCDXF_b.w-getTextWidth(values[i]))/2, y+vo);
         tft.print (values[i]);
-
-        y += 4;
 
         selectFontStyle (LIGHT_FONT, FAST_FONT);
         tft.setTextColor (color == RA8875_BLACK ? RA8875_WHITE : color);
-        tft.setCursor (NCDXF_b.x + (NCDXF_b.w-getTextWidth(titles[i]))/2, y);
+        tft.setCursor (NCDXF_b.x + (NCDXF_b.w-getTextWidth(titles[i]))/2, y+to);
         tft.print (titles[i]);
-
-        y += 7;
     }
-}
-
-/* common function to install pane corresponding to touch in NCDXF_b.
- * N.B. never use PANE_0
- */
-void doNCDXFStatsTouch (const SCoord &s, PlotChoice pcs[NCDXF_B_NFIELDS])
-{
-    // decide which row
-    int r = NCDXF_B_NFIELDS*(s.y - NCDXF_b.y)/NCDXF_b.h;
-    if (r < 0 || r >= NCDXF_B_NFIELDS)
-        fatalError(_FX("Bogus doNCDXFStatsTouch r %d"), r);       // never returns
-                
-    // decide which PLOT_CH 
-    PlotChoice pc = pcs[r];
-                    
-    // done if the chosen pane is already on display
-    if (findPaneChoiceNow (pc) != PANE_NONE)
-        return; 
-            
-    // not on display, choose a pane to use
-    PlotPane pp = PANE_NONE;
-            
-    // start by looking for a pane with the new stat already in its rotation set (we know it's not visible)
-    for (int i = PANE_1; i < PANE_N; i++) {
-        if (plot_rotset[i] & (1<<pc)) {
-            pp = (PlotPane)i;
-            break;
-        } 
-    }
-            
-    // else look for a pane with no related stats anywhere in its rotation set
-    if (pp == PANE_NONE) {
-        uint32_t pcs_mask = 0;
-        for (int i = 0; i < NCDXF_B_NFIELDS; i++)
-            pcs_mask |= (1 << pcs[i]);
-        for (int i = PANE_1; i < PANE_N; i++) {
-            if ((plot_rotset[i] & pcs_mask) == 0) {
-                pp = (PlotPane)i;
-                break;
-            }
-        }
-    }
-
-    // else just pick the pane next to the stats summary
-    if (pp == PANE_NONE)
-        pp = PANE_3;
-
-    // install as only choice
-    (void) setPlotChoice (pp, pc);
-    plot_rotset[pp] = 1 << pc;
-    savePlotOps();
 }
 
 /* init brb_rotset and brb_mode

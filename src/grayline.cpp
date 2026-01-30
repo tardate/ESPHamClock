@@ -20,7 +20,6 @@
 #define GL_LC   BRGRAY                                  // scale color
 #define GL_TC   RA8875_WHITE                            // text color
 #define RISE_R  2                                       // rise line circle radius
-#define SPD     (3600L*24L)                             // seconds per day
 
 // handy conversions
 #define GL_X2D(x)    (((x)-GL_X0)*GL_PI/GL_PW)          // x to doy
@@ -44,21 +43,21 @@ static void drawGLInit (const time_t yr0, SBox &resume_b)
     selectFontStyle (LIGHT_FONT, SMALL_FONT);
     tft.setCursor (map_b.x + 70, map_b.y + 34);
     tft.setTextColor (GL_TC);
-    tft.print(_FX("UTC "));
+    tft.print("UTC ");
     tft.setTextColor (DE_COLOR);
-    tft.print(_FX("DE "));
+    tft.print("DE ");
     tft.setTextColor (GL_TC);
-    tft.print(_FX("and "));
+    tft.print("and ");
     tft.setTextColor (DX_COLOR);
-    tft.print(_FX("DX "));
+    tft.print("DX ");
     tft.setTextColor (GL_TC);
 
     // show rise and set key beneath respective word -- x coords are from Touch log
-    tft.print(_FX("Grayline "));
+    tft.print("Grayline ");
     uint16_t rise_x = tft.getCursorX();
-    tft.print(_FX("Rise and "));
+    tft.print("Rise and ");
     uint16_t set_x = tft.getCursorX();
-    tft.print(_FX("Set Times"));
+    tft.print("Set Times");
     for (uint16_t x = rise_x; x < rise_x + 42; x += 2)
         tft.fillCircle (x, map_b.y + 42, RISE_R, GL_TC);
     for (uint16_t x = set_x; x < set_x + 34; x += 2)
@@ -70,7 +69,7 @@ static void drawGLInit (const time_t yr0, SBox &resume_b)
     resume_b.h = 40;
     resume_b.y = map_b.y + 4;
     selectFontStyle (LIGHT_FONT, SMALL_FONT);
-    drawStringInBox (_FX("Resume"), resume_b, false, RA8875_GREEN);
+    drawStringInBox ("Resume", resume_b, false, RA8875_GREEN);
 
     // draw and label the vertical axis
     selectFontStyle (LIGHT_FONT, FAST_FONT);
@@ -87,7 +86,7 @@ static void drawGLInit (const time_t yr0, SBox &resume_b)
     tft.drawLine (GL_X0, GL_Y1, GL_X1, GL_Y1, GL_LC);                   // horizontal axis
     for (uint16_t x = GL_X0; x < GL_X1; x++) {
         int doy = GL_X2D(x);
-        time_t t = yr0 + doy*SPD;
+        time_t t = yr0 + doy*SECSPERDAY;
         if (day(t) == 1) {
             tft.drawLine (x, GL_Y1+GL_TL, x, GL_Y1, GL_LC);             // tick mark
             tft.setCursor (x-10, GL_Y1+GL_TL+4);
@@ -116,7 +115,7 @@ static void drawGLGrid (const time_t yr0, uint16_t x0, uint16_t x1)
         if (doy == prev_doy)
             continue;
         prev_doy = doy;
-        time_t t = yr0 + doy*SPD;
+        time_t t = yr0 + doy*SECSPERDAY;
         if (day(t) == 1 && month(t) > 1)                                // skip first ... 
             tft.drawLine (x, GL_Y1, x, GL_Y0, GL_GC);                   // vertical grid
     }
@@ -130,7 +129,7 @@ static void drawGLData (const time_t yr0, uint16_t x0, uint16_t x1)
     resetWatchdog();
 
     // draw today line if within [x0,x1]
-    uint16_t today_x = GL_D2X((myNow() - yr0)/SPD);
+    uint16_t today_x = GL_D2X((myNow() - yr0)/SECSPERDAY);
     if (today_x >= x0 && today_x <= x1)
         tft.drawLine (today_x, GL_Y0, today_x, GL_Y1, DE_COLOR);
 
@@ -144,7 +143,7 @@ static void drawGLData (const time_t yr0, uint16_t x0, uint16_t x1)
         if (doy == prev_doy)
             continue;
         prev_doy = doy;
-        time_t t = yr0 + doy*SPD;
+        time_t t = yr0 + doy*SECSPERDAY;
 
         time_t riset, sett;
         getSolarRS (t, de_ll, &riset, &sett);
@@ -194,46 +193,46 @@ static void drawGLPopup (time_t t, SBox &box)
     // title
     tft.setCursor (box.x + 55, box.y + 4);
     tft.setTextColor (GL_TC);
-    tft.printf (_FX("%s %d"), monthShortStr(month(t)), day(t));
+    tft.printf ("%s %d", monthShortStr(month(t)), day(t));
 
     // draw de rise and set times
     time_t riset, sett;
     getSolarRS (t, de_ll, &riset, &sett);
     tft.setTextColor (DE_COLOR);
     tft.setCursor (box.x + 5, box.y + 14);
-    tft.print (_FX("DE  R "));
+    tft.print ("DE  R ");
     if (riset) {
         int r_hr = hour(riset);
         int r_mn = minute(riset);
-        tft.printf (_FX("%02d:%02d"), r_hr, r_mn);
+        tft.printf ("%02d:%02d", r_hr, r_mn);
     } else
-        tft.printf (_FX("--:--"));
-    tft.print (_FX("  S "));
+        tft.printf ("--:--");
+    tft.print ("  S ");
     if (sett) {
         int s_hr = hour(sett);
         int s_mn = minute(sett);
-        tft.printf (_FX("%02d:%02d"), s_hr, s_mn);
+        tft.printf ("%02d:%02d", s_hr, s_mn);
     } else
-        tft.printf (_FX("--:--"));
+        tft.printf ("--:--");
 
     // draw dx rise and set times
     getSolarRS (t, dx_ll, &riset, &sett);
     tft.setTextColor (DX_COLOR);
     tft.setCursor (box.x + 5, box.y + 24);
-    tft.print (_FX("DX  R "));
+    tft.print ("DX  R ");
     if (riset) {
         int r_hr = hour(riset);
         int r_mn = minute(riset);
-        tft.printf (_FX("%02d:%02d"), r_hr, r_mn);
+        tft.printf ("%02d:%02d", r_hr, r_mn);
     } else
-        tft.printf (_FX("--:--"));
-    tft.print (_FX("  S "));
+        tft.printf ("--:--");
+    tft.print ("  S ");
     if (sett) {
         int s_hr = hour(sett);
         int s_mn = minute(sett);
-        tft.printf (_FX("%02d:%02d"), s_hr, s_mn);
+        tft.printf ("%02d:%02d", s_hr, s_mn);
     } else
-        tft.printf (_FX("--:--"));
+        tft.printf ("--:--");
 }
 
 /* draw and manage the sun rise/set plot.
@@ -278,18 +277,21 @@ void plotGrayline()
     char c;
     UserInput ui = {
         map_b,
-        NULL,
-        false,
+        UI_UFuncNone,
+        UF_UNUSED,
         60000,
-        true,
+        UF_CLOCKSOK,
         s,
         c,
+        false,
+        false
     };
 
     while (waitForUser(ui)) {
 
-        // done if return, esc or tap Resume button
-        if (c == '\r' || c == '\n' || c == 27 || inBox (s, resume_b))
+        // done if return, esc or tap Resume button or tap outside map
+        if (c == CHAR_CR || c == CHAR_NL || c == CHAR_ESC || inBox (s, resume_b)
+                                || (c == CHAR_NONE && !inBox (s, map_b)))
             break;
 
         // first erase previous popup, if any
@@ -321,7 +323,7 @@ void plotGrayline()
             popup.d1 = GL_X2D(popup.b.x + popup.b.w);
 
             // draw popup for time corresponding to s.x
-            drawGLPopup (yr0 + GL_X2D(s.x)*SPD, popup.b);
+            drawGLPopup (yr0 + GL_X2D(s.x)*SECSPERDAY, popup.b);
 
             // note popup is now up
             popup.is_up = true;
@@ -330,6 +332,6 @@ void plotGrayline()
 
     // ack
     selectFontStyle (LIGHT_FONT, SMALL_FONT);
-    drawStringInBox (_FX("Resume"), resume_b, true, RA8875_GREEN);
+    drawStringInBox ("Resume", resume_b, true, RA8875_GREEN);
     tft.drawPR();
 }

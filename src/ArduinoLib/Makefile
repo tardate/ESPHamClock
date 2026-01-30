@@ -18,7 +18,6 @@ OBJS = \
 	ESP.o \
 	ESP8266WiFi.o \
 	ESP8266httpUpdate.o \
-        LittleFS.o \
 	Serial.o \
         SPI.o \
 	Time.o \
@@ -38,5 +37,5 @@ libarduino.a: $(OBJS)
 	ranlib $@
 
 clean:
-	touch x.o x.a
-	rm -f *.o *.a
+	touch x.o x.a x.a.1
+	rm -f *.o *.a *.a.*

@@ -12,10 +12,10 @@
 #define I2CADDR_2       0x77                    // always at [1] in data arrays below
 
 // polling management. polls at START_DT at first then slows to FINAL_DT after steady-state period
-#define MAX_BME_AGE     (24*3600L)              // max age to plot, seconds
-#define START_DT        (1*1000L)               // initial polling period, millis
-#define FINAL_DT        (1000L*MAX_BME_AGE/N_BME_READINGS)      // final period, millis
-#define SS_PERIOD       (3600*1000L)            // time to reach steady state, millis
+#define MAX_BME_AGE     (24*3600L)             // max age to plot, seconds
+#define START_DT        (2*1000L)              // initial polling period, millis
+#define FINAL_DT        (1000L*MAX_BME_AGE/N_BME_READINGS)      // final polling period, millis
+#define SS_START        (1800*1000L)           // when to reach final steady state, millis
 
 // data management.
 static const uint8_t bme_i2c[MAX_N_BME] = {I2CADDR_1, I2CADDR_2};    // N.B. match BME_76 and BME_77 indices
@@ -45,10 +45,10 @@ static void connectSensors(bool all)
             continue;
 
         uint8_t addr = bme_i2c[i];
-        Serial.printf (_FX("BME %strying 0x%x\n"), !bme_data[i] ? "" : "re", addr);
+        Serial.printf ("BME %strying 0x%x\n", !bme_data[i] ? "" : "re", addr);
         Adafruit_BME280 &bme = bme_io[i];
         if (!bme.begin(addr)) {
-            Serial.printf (_FX("BME init 0x%02X fail\n"), addr);
+            Serial.printf ("BME init 0x%02X fail\n", addr);
             continue;
         }
 
@@ -85,17 +85,17 @@ static void connectSensors(bool all)
         }
 
         if (n_stable == _N_OK)
-            Serial.printf (_FX("BME init 0x%02X success\n"), addr);
+            Serial.printf ("BME init 0x%02X success\n", addr);
         else
-            Serial.printf (_FX("BME 0x%02X not stable\n"), addr);
+            Serial.printf ("BME 0x%02X not stable\n", addr);
     }
 
     if (getNBMEConnected() == 0)
-        Serial.println(F("BME none found"));
+        Serial.println("BME none found");
 }
 
-/* read the given temperature, pressure and humidity in units determined by useMetricUnits() into
- * next q enttry. if ok advance q and return if ok.
+/* read the given temperature, pressure and humidity in user units into next q entry.
+ * if ok advance q and return if ok.
  */
 static bool readSensor (int device)
 {
@@ -120,25 +120,23 @@ static bool readSensor (int device)
     // Serial.printf ("BME Raw T %g P %g H %g\n", t, p, h);                             // RBF
     if (isnan(t) || t < -40 || isnan(p) || isnan(h)) {
         // try restarting
-        Serial.printf (_FX("BME %x read err\n"), dp->i2c);
+        Serial.printf ("BME %x read err\n", dp->i2c);
         connectSensors(false);
     } else {
         // all good
-        if (useMetricUnits()) {
-            // want C and hPa
-            dp->t[dp->q_head] = BMEPACK_T (t + getBMETempCorr(device));                 // already C
-            dp->p[dp->q_head] = BMEPACK_P (p/100 + getBMEPresCorr(device));             // Pascals to hPa
-        } else {
-            // want F and inches Hg
-            dp->t[dp->q_head] = BMEPACK_T (1.8*t + 32.0 + getBMETempCorr(device));      // C to F
-            dp->p[dp->q_head] = BMEPACK_P (p / 3386.39 + getBMEPresCorr(device));       // Pascals to in_Hg
-        }
-        dp->h[dp->q_head] = BMEPACK_H(h);
+        if (showATMhPa())
+            dp->p[dp->q_head] = p/100 + getBMEPresCorr(device);                         // Pascals to hPa
+        else
+            dp->p[dp->q_head] = p / 3386.39 + getBMEPresCorr(device);                   // Pascals to in_Hg
+        if (showTempC())
+            dp->t[dp->q_head] = t + getBMETempCorr(device);                             // already C
+        else
+            dp->t[dp->q_head] = 1.8*t + 32.0 + getBMETempCorr(device);                  // C to F
+        dp->h[dp->q_head] = h;
         dp->u[dp->q_head] = myNow();
 
-        // Serial.printf (_FX("BME %u %x %7.2f %7.2f %7.2f\n"), dp->u[dp->q_head], dp->i2c,
-                            // BMEUNPACK_T(dp->t[dp->q_head]), BMEUNPACK_P(dp->p[dp->q_head]),
-                            // BMEUNPACK_H(dp->h[dp->q_head])); 
+        // Serial.printf ("BME %u %x %7.2f %7.2f %7.2f\n", dp->u[dp->q_head], dp->i2c,
+                            // dp->t[dp->q_head], dp->p[dp->q_head], dp->h[dp->q_head]); 
 
         // advance q
         dp->q_head = (dp->q_head+1)%N_BME_READINGS;
@@ -167,7 +165,7 @@ static bool readSensors(void)
 
 
 /* convert temperature and relative humidity to dewpoint.
- * both temp units are as per useMetricUnits().
+ * N.B. both temp units are in user units.
  * http://irtfweb.ifa.hawaii.edu/~tcs3/tcs3/Misc/Dewpoint_Calculation_Humidity_Sensor_E.pdf
  */
 float dewPoint (float T, float RH)
@@ -177,11 +175,11 @@ float dewPoint (float T, float RH)
         return (0);
 
     // want C
-    if (!useMetricUnits())
+    if (!showTempC())
         T = FAH2CEN(T);
     float H = (log10f(RH)-2)/0.4343F + (17.62F*T)/(243.12F+T);
     float Dp = 243.12F*H/(17.62F-H);
-    if (!useMetricUnits())
+    if (!showTempC())
         Dp = CEN2FAH(Dp);
     return (Dp);
 }
@@ -200,37 +198,37 @@ void drawOneBME280Pane (const SBox &box, PlotChoice ch)
             continue;
 
         // prepare the appropriate plot
-        int16_t *q;
+        float *valu_q;
         char title[32];
         uint16_t color;
         switch (ch) {
         case PLOT_CH_TEMPERATURE:
-            q = dp->t;
-            if (useMetricUnits())
-                snprintf (title, sizeof(title), _FX("I2C %x: Temperature, C"), bme_i2c[i]);
+            valu_q = dp->t;
+            if (showTempC())
+                snprintf (title, sizeof(title), "I2C %x: Temperature, C", bme_i2c[i]);
             else
-                snprintf (title, sizeof(title), _FX("I2C %x: Temperature, F"), bme_i2c[i]);
+                snprintf (title, sizeof(title), "I2C %x: Temperature, F", bme_i2c[i]);
             color = TEMP_COLOR;
             break;
         case PLOT_CH_PRESSURE:
-            q = dp->p;
-            if (useMetricUnits())
-                snprintf (title, sizeof(title), _FX("I2C %x: Pressure, hPa"), bme_i2c[i]);
+            valu_q = dp->p;
+            if (showATMhPa())
+                snprintf (title, sizeof(title), "I2C %x: Pressure, hPa", bme_i2c[i]);
             else
-                snprintf (title, sizeof(title), _FX("I2C %x: Pressure, inHg"), bme_i2c[i]);
+                snprintf (title, sizeof(title), "I2C %x: Pressure, inHg", bme_i2c[i]);
             color = PRES_COLOR;
             break;
         case PLOT_CH_HUMIDITY:
-            q = dp->h;
-            snprintf (title, sizeof(title), _FX("I2C %x: Humidity, %%"), bme_i2c[i]);
+            valu_q = dp->h;
+            snprintf (title, sizeof(title), "I2C %x: Humidity, %%", bme_i2c[i]);
             color = HUM_COLOR;
             break;
         case PLOT_CH_DEWPOINT:
-            q = NULL;               // DP is derived, see below
-            if (useMetricUnits())
-                snprintf (title, sizeof(title), _FX("I2C %x: Dew point, C"), bme_i2c[i]);
+            valu_q = NULL;               // DP is derived, see below
+            if (showTempC())
+                snprintf (title, sizeof(title), "I2C %x: Dew point, C", bme_i2c[i]);
             else
-                snprintf (title, sizeof(title), _FX("I2C %x: Dew point, F"), bme_i2c[i]);
+                snprintf (title, sizeof(title), "I2C %x: Dew point, F", bme_i2c[i]);
             color = DP_COLOR;
             break;
         default: 
@@ -255,13 +253,13 @@ void drawOneBME280Pane (const SBox &box, PlotChoice ch)
                     continue;                                   // limit plot age
                 x[nxy] = age_s;                                 // rescaled after we know total period
                 if (ch == PLOT_CH_DEWPOINT) {
-                    value_now = y[nxy] = dewPoint (BMEUNPACK_T(dp->t[qj]), BMEUNPACK_H(dp->h[qj]));
+                    value_now = y[nxy] = dewPoint (dp->t[qj], dp->h[qj]);
                 } else if (ch == PLOT_CH_TEMPERATURE) {
-                    value_now = y[nxy] = BMEUNPACK_T(q[qj]);
+                    value_now = y[nxy] = valu_q[qj];
                 } else if (ch == PLOT_CH_PRESSURE) {
-                    value_now = y[nxy] = BMEUNPACK_P(q[qj]);
+                    value_now = y[nxy] = valu_q[qj];
                 } else if (ch == PLOT_CH_HUMIDITY) {
-                    value_now = y[nxy] = BMEUNPACK_H(q[qj]);
+                    value_now = y[nxy] = valu_q[qj];
                 }
                 nxy++;
             }
@@ -272,15 +270,15 @@ void drawOneBME280Pane (const SBox &box, PlotChoice ch)
         const char *xlabel;
         float time_scale;
         if (period_s >= 3600) {
-            xlabel = _FX("Hours");
+            xlabel = "Hours";
             time_scale = -1/3600.0F;
         } else {
-            xlabel = _FX("Minutes");
+            xlabel = "Minutes";
             time_scale = -1/60.0F;
         }
         for (int j = 0; j < nxy; j++)
             x[j] *= time_scale;
-        // Serial.printf (_FX("BME %10ld s %d  %6.2f .. %6.2f\n"), readDT/1000, nxy, x[0], x[nxy-1]);
+        // Serial.printf ("BME %10ld s %d  %6.2f .. %6.2f\n", readDT/1000, nxy, x[0], x[nxy-1]);
 
         // prep plot box
         SBox plbox = box;                                       // start assuming whole
@@ -291,9 +289,9 @@ void drawOneBME280Pane (const SBox &box, PlotChoice ch)
         }
 
         // plot in plbox, showing a bit more precision for imperial pressure
-        if (ch == PLOT_CH_PRESSURE && !useMetricUnits()) {
+        if (ch == PLOT_CH_PRESSURE && !showATMhPa()) {
             char buf[32];
-            snprintf (buf, sizeof(buf), _FX("%.2f"), value_now);
+            snprintf (buf, sizeof(buf), "%.2f", value_now);
             plotXYstr (plbox, x, y, nxy, xlabel, title, color, 0, 0, buf);
         } else {
             plotXY (plbox, x, y, nxy, xlabel, title, color, 0, 0, value_now);
@@ -311,12 +309,12 @@ void initBME280()
     connectSensors(true);
 
     if ((brb_rotset & (1 << BRB_SHOW_BME76)) && !bme_data[BME_76]) {
-        Serial.print (F("BME: Removing BRB_SHOW_BME76 from brb_rotset\n"));
+        Serial.print ("BME: Removing BRB_SHOW_BME76 from brb_rotset\n");
         brb_rotset &= ~(1 << BRB_SHOW_BME76);
         checkBRBRotset();
     }
     if ((brb_rotset & (1 << BRB_SHOW_BME77)) && !bme_data[BME_77]) {
-        Serial.print (F("BME: Removing BRB_SHOW_BME77 from brb_rotset\n"));
+        Serial.print ("BME: Removing BRB_SHOW_BME77 from brb_rotset\n");
         brb_rotset &= ~(1 << BRB_SHOW_BME77);
         checkBRBRotset();
     }
@@ -357,11 +355,11 @@ void readBME280 ()
 
             // gradually slow
             time_t up = getUptime (NULL, NULL, NULL, NULL);
-            if (up > SS_PERIOD/1000)
+            if (up > SS_START/1000)
                 readDT = FINAL_DT;
             else
-                readDT = START_DT + up*(1000L*(FINAL_DT-START_DT)/SS_PERIOD);
-            // Serial.printf (_FX("BME up %d s readDT %ld s\n"), up, readDT/1000);
+                readDT = START_DT + up*(1000L*(FINAL_DT-START_DT)/SS_START);
+            // Serial.printf ("BME up %d s readDT %ld s\n", up, readDT/1000);
         }
     }
 }
@@ -416,12 +414,12 @@ void drawBMEStats()
     const char *name = NULL;
     if (brb_mode == BRB_SHOW_BME76) {
         dp = getBMEData (BME_76, false);
-        name = _FX("@76");
+        name = "@76";
     } else if (brb_mode == BRB_SHOW_BME77) {
         dp = getBMEData (BME_77, false);
-        name = _FX("@77");
+        name = "@77";
     } else {
-        fatalError (_FX("drawBMEStats() brb_mode %d no data"), brb_mode);
+        fatalError ("drawBMEStats() brb_mode %d no data", brb_mode);
         return; // lint
     }
 
@@ -431,31 +429,31 @@ void drawBMEStats()
     // fill fields for drawNCDXFStats()
     int i = 0;
 
-    snprintf (titles[i], sizeof(titles[i]), _FX("Temp%s"), name);
-    snprintf (values[i], sizeof(values[i]), _FX("%.1f"), BMEUNPACK_T(dp->t[qi]));
+    snprintf (titles[i], sizeof(titles[i]), "Temp%s", name);
+    snprintf (values[i], sizeof(values[i]), "%.1f", dp->t[qi]);
     colors[i] = TEMP_COLOR;
     i++;
 
-    strcpy (titles[i], _FX("Humidity"));
-    snprintf (values[i], sizeof(values[i]), _FX("%.1f"), BMEUNPACK_H(dp->h[qi]));
+    strcpy (titles[i], "Humidity");
+    snprintf (values[i], sizeof(values[i]), "%.1f", dp->h[qi]);
     colors[i] = HUM_COLOR;
     i++;
 
-    strcpy (titles[i], _FX("Dew Pt"));
-    snprintf (values[i], sizeof(values[i]), _FX("%.1f"), dewPoint(BMEUNPACK_T(dp->t[qi]),BMEUNPACK_H(dp->h[qi])));
+    strcpy (titles[i], "Dew Pt");
+    snprintf (values[i], sizeof(values[i]), "%.1f", dewPoint(dp->t[qi],dp->h[qi]));
     colors[i] = DP_COLOR;
     i++;
 
-    strcpy (titles[i], _FX("Pressure"));
-    if (useMetricUnits())
-        snprintf (values[i], sizeof(values[i]), _FX("%.0f"), BMEUNPACK_P(dp->p[qi]));
+    strcpy (titles[i], "Pressure");
+    if (showATMhPa())
+        snprintf (values[i], sizeof(values[i]), "%.0f", dp->p[qi]);        // hPa
     else
-        snprintf (values[i], sizeof(values[i]), _FX("%.2f"), BMEUNPACK_P(dp->p[qi]));
+        snprintf (values[i], sizeof(values[i]), "%.2f", dp->p[qi]);        // inHg
     colors[i] = PRES_COLOR;
     i++;
 
     if (i != NCDXF_B_NFIELDS)
-        fatalError (_FX("drawBMEStats wrong count"));
+        fatalError ("drawBMEStats wrong count");
 
     // do it
     drawNCDXFStats (RA8875_BLACK, titles, values, colors);
@@ -465,6 +463,10 @@ void drawBMEStats()
  */
 void doBMETouch (const SCoord &s)
 {
+    // decide which param
+    const uint16_t h = NCDXF_b.h / NCDXF_B_NFIELDS;
+    int n = (s.y - NCDXF_b.y)/h;
+
     // list of pane choices
     PlotChoice pcs[NCDXF_B_NFIELDS];            
     pcs[0] = PLOT_CH_TEMPERATURE;
@@ -472,12 +474,12 @@ void doBMETouch (const SCoord &s)
     pcs[2] = PLOT_CH_DEWPOINT;
     pcs[3] = PLOT_CH_PRESSURE;
 
-    // do it
-    doNCDXFStatsTouch (s, pcs);
+    // engage
+    setPlotVisible (pcs[n]);
 }
 
 /* change the temperature correction for the given BME, both any current data and NV persistent.
- * correction is in current units as determined by useMetricUnits().
+ * correction is in current user units.
  */
 bool recalBMETemp (BMEIndex device, float new_corr)
 {
@@ -491,7 +493,7 @@ bool recalBMETemp (BMEIndex device, float new_corr)
         // apply to all existing data
         for (int i = 0; i < N_BME_READINGS; i++)
             if (dp->u[i] > 0)
-                dp->t[i] = BMEPACK_T (BMEUNPACK_T (dp->t[i]) + del_corr);
+                dp->t[i] = dp->t[i] + del_corr;
 
         // update display, if any applicable
         drawBME280Panes();
@@ -503,7 +505,7 @@ bool recalBMETemp (BMEIndex device, float new_corr)
 }
 
 /* change the pressure correction for the given BME, both cpurrent data and NV persistent.
- * correction is in current units as determined by useMetricUnits().
+ * correction is in current user units.
  */
 bool recalBMEPres (BMEIndex device, float new_corr)
 {
@@ -517,7 +519,7 @@ bool recalBMEPres (BMEIndex device, float new_corr)
         // apply to all existing data
         for (int i = 0; i < N_BME_READINGS; i++)
             if (dp->u[i] > 0)
-                dp->p[i] = BMEPACK_P (BMEUNPACK_P (dp->p[i]) + del_corr);
+                dp->p[i] = dp->p[i] + del_corr;
 
         // update display, if any applicable
         drawBME280Panes();

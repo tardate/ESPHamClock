@@ -1,14 +1,13 @@
 /* manage PSKReporter, WSPR and RBN records and drawing.
- * ESP does not draw paths and only shows max dist on each band.
  */
 
 #include "HamClock.h"
 
 
 
-// global state
+// global state for webserver
 uint8_t psk_mask;                               // one of PSKModeBits
-uint32_t psk_bands;                             // bitmask of PSKBandSetting
+uint32_t psk_bands;                             // bitmask of HamBandSetting
 uint16_t psk_maxage_mins;                       // query period, minutes
 uint8_t psk_showdist;                           // show max distances, else count
 
@@ -20,190 +19,45 @@ static const char rbn_page[] PROGMEM = "/fetchRBN.pl";
 // color config
 #define LIVE_COLOR      RGB565(80,80,255)       // title color
 
-// we never tag spots with calls because there are usually too many, but it's always worth marking
-#define markSpots()     (dotSpots() || labelSpots())
-
 // private state
-static int n_reports;                           // count of reports in psk_bands
+static DXSpot *reports;                         // malloced list of all reports, not just TST_PSKBAND
+static int n_reports;                           // count of reports used in psk_bands, might be < n_malloced
+static int n_malloced;                          // total n malloced in reports[]
+static int spot_maxrpt[HAMBAND_N];              // indices into reports[] for the farthest spot per band
+static PSKBandStats bstats[HAMBAND_N];          // band stats
 
-// band stats
-PSKBandStats bstats[PSKBAND_N];
-static int findBand (long Hz);
-
-/* band edges, name and color setup reference
- */
-typedef struct {
-    int min_kHz, max_kHz;                       // band edges
-    const char *name;                           // common name
-    ColorSelection cid;                         // get color from setup
-} BandEdge;
-
-static BandEdge bands[PSKBAND_N] = {            // order must match PSKBandSetting
-    {  1800,   2000,  "160",  BAND160_CSPR},
-    {  3500,   4000,  "80",   BAND80_CSPR},
-    {  5330,   5410,  "60",   BAND60_CSPR},
-    {  7000,   7300,  "40",   BAND40_CSPR},
-    { 10100,  10150,  "30",   BAND30_CSPR},
-    { 14000,  14350,  "20",   BAND20_CSPR},
-    { 18068,  18168,  "17",   BAND17_CSPR},
-    { 21000,  21450,  "15",   BAND15_CSPR},
-    { 24890,  24990,  "12",   BAND12_CSPR},
-    { 28000,  29700,  "10",   BAND10_CSPR},
-    { 50000,  54000,  "6",    BAND6_CSPR},
-    {144000, 148000,  "2",    BAND2_CSPR},
-};
-
-
-/* return drawing color for the given frequency, or black if not found.
- */
-uint16_t getBandColor (long Hz)
-{
-    int b = findBand (Hz);
-    return (b >= 0 && b < PSKBAND_N ? getMapColor(bands[b].cid) : RA8875_BLACK);
-}
-
-
+// layout
+#define SUBHEAD_DYUP 15                         // distance up from bottom to subheading
+#define TBLHGAP (PLOTBOX123_W/20)               // table horizontal gap
+#define TBLCOLW (43*PLOTBOX123_W/100)           // table column width
+#define TBLROWH ((PLOTBOX123_H-LISTING_Y0-SUBHEAD_DYUP)/(HAMBAND_N/2))      // table row height
 
 // handy test and set whether a band is in use
-#define SET_PSKBAND(b)  (psk_bands |= (1 << (b)))               // record that band b is in use
-#define TST_PSKBAND(b)  ((psk_bands & (1 << (b))) != 0)         // test whether band b is in use
-
-// handy target radius, match dots, canonical coords
-static uint16_t targetSz(void)
-{
-    static uint16_t r;
-    if (r == 0) {
-        uint16_t lwRaw;
-        getRawSpotSizes (lwRaw, r);
-        r = ceilf ((float)r/tft.SCALESZ);       // improves promoting back to raw coords
-    }
-    return (r);
-}
+#define SET_PSKBAND(b)  (psk_bands |= (1 << (b)))               // record that band b paths are displayed
+#define TST_PSKBAND(b)  ((b) != HAMBAND_NONE && (psk_bands & (1 << (b))) != 0)  // test if band b displayed
 
 
-#if defined(_IS_UNIX)
-
-/* only UNIX stores all spots and adds fast lookup. ESP only stores the spot at max dist per band in bstats.
+/* draw a distance target marker at Raw s with the given fill color.
  */
-
-// UNIX private UNIX state
-static PSKReport *reports;                      // malloced list of reports
-static int n_malloced;                          // n malloced in reports[]
-static int spot_maxrpt[PSKBAND_N];              // indices into reports[] for the farthest spot per band
-static KD3Node *kd3tree, *kd3root;              // n_reports of nodes that point into reports[] and tree
-
-
-#else 
-
-/* erase all distance markers
- * ESP only
- */
-static void eraseFarthestPSKSpots (void)
+static void drawDistanceTarget (const SCoord &s, ColorSelection id)
 {
-    // ignore if not in any rotation set or not showing dots
-    if (findPaneForChoice(PLOT_CH_PSK) == PANE_NONE || !markSpots())
+    // ignore if no dots
+    if (getSpotLabelType() == LBL_NONE)
         return;
 
-    resetWatchdog();
+    // get radius
+    uint16_t dot_r = getRawSpotRadius(id);
 
-    for (int i = 0; i < PSKBAND_N; i++) {
-        PSKBandStats &pbs = bstats[i];
-        if (pbs.maxkm > 0) {
-            // erase target for sure
-            for (int8_t dy = -targetSz(); dy <= targetSz(); dy += 1) {
-                for (int8_t dx = -targetSz(); dx <= targetSz(); dx += 1) {
-                    drawMapCoord (bstats[i].max_s.x+dx, bstats[i].max_s.y+dy);
-                }
-            }
-            // erase tag if set
-            if (labelSpots()) {
-                for (uint8_t dy = 0; dy < pbs.maxtag_b.h; dy++) {
-                    for (uint8_t dx = 0; dx < pbs.maxtag_b.w; dx++) {
-                        drawMapCoord (pbs.maxtag_b.x+dx, pbs.maxtag_b.y+dy);
-                    }
-                }
-            }
-        }
-    }
-}
-
-/* return whether the given screen coord is over any visible psk spot or its tag
- * ESP only
- */
-bool overAnyFarthestPSKSpots (const SCoord &s)
-{
-    // ignore if not in any rotation set or not showing dots
-    if (findPaneForChoice(PLOT_CH_PSK) == PANE_NONE || !markSpots())
-        return (false);
-
-    for (int i = 0; i < PSKBAND_N; i++) {
-        PSKBandStats &pbs = bstats[i];
-        if (pbs.maxkm > 0 && TST_PSKBAND(i)) {
-            if (inCircle (s, SCircle {pbs.max_s, targetSz()}))
-                return (true);
-            if (labelSpots() && inBox (s, pbs.maxtag_b))
-                return (true);
-        }
-    }
-
-    // nope
-    return (false);
-}
-
-#endif  // _IS_UNIX
-
-
-
-/* return index of bands[] containing Hz, else -1
- */
-static int findBand (long Hz)
-{
-    int kHz = (int)(Hz/1000);
-
-    int min_i = 0;
-    int max_i = PSKBAND_N-1;
-    while (min_i <= max_i) {
-        int mid = (min_i + max_i)/2;
-        if ((long)pgm_read_dword(&bands[mid].max_kHz) < kHz)
-            min_i = mid+1;
-        else if ((long)pgm_read_dword(&bands[mid].min_kHz) > kHz)
-            max_i = mid-1;
-        else
-            return (mid);
-    }
-
-    // Serial.printf (_FX("%ld Hz unsupported band\n"), Hz);
-    return (-1);
-}
-
-
-/* dither ll so multiple spots at same location will be found by kdtree
- */
-static void ditherLL (LatLong &ll)
-{
-    // tweak some fraction of a 4 char grid: 1 deg in lat, 2 deg in lng
-    ll.lat_d += random(1000)/1000.0F - 0.5F;
-    ll.lng_d += random(2000)/1000.0F - 1.0F;
-    normalizeLL(ll);
-}
-
-
-/* draw a distance target marker at canonical s with the given fill color.
- */
-static void drawDistanceTarget (const SCoord &s, uint16_t fill_color)
-{
+    // get colors
+    uint16_t fill_color = getMapColor (id);
     uint16_t cross_color = getGoodTextColor (fill_color);
 
-    // raw looks better
+    // raw looks nicer
 
-    uint16_t x = s.x * tft.SCALESZ;
-    uint16_t y = s.y * tft.SCALESZ;
-    uint16_t szRaw = targetSz() * tft.SCALESZ;
-
-    tft.fillCircleRaw (x, y, szRaw, fill_color);
-    tft.drawCircleRaw (x, y, szRaw, cross_color);
-    tft.drawLineRaw (x-szRaw, y, x+szRaw, y, 1, cross_color);
-    tft.drawLineRaw (x, y-szRaw, x, y+szRaw, 1, cross_color);
+    tft.fillCircleRaw (s.x, s.y, dot_r, fill_color);
+    tft.drawCircleRaw (s.x, s.y, dot_r, cross_color);
+    tft.drawLineRaw (s.x-dot_r, s.y, s.x+dot_r, s.y, 1, cross_color);
+    tft.drawLineRaw (s.x, s.y-dot_r, s.x, s.y+dot_r, 1, cross_color);
 }
 
 /* return whether the given age, in minutes, is allowed.
@@ -223,9 +77,9 @@ void initPSKState()
         NVWriteUInt8 (NV_PSK_MODEBITS, psk_mask);
     }
     if (!NVReadUInt32 (NV_PSK_BANDS, &psk_bands)) {
-        // default all bands
+        // default all ham_bands
         psk_bands = 0;
-        for (int i = 0; i < PSKBAND_N; i++)
+        for (int i = 0; i < HAMBAND_N; i++)
             SET_PSKBAND(i);
         NVWriteUInt32 (NV_PSK_BANDS, psk_bands);
     }
@@ -250,35 +104,24 @@ void savePSKState()
     NVWriteUInt8 (NV_PSK_SHOWDIST, psk_showdist);
 }
 
-/* draw a target at the farthest spot in each active band if needed.
- * N.B. as a side effect we set bstats[].max_s and maxtag_b in order to react to changes in projection.
+/* draw a target at the farthest spot in each active band as needed.
  */
 void drawFarthestPSKSpots ()
 {
-    // proceed unless not in use
-    if (findPaneForChoice(PLOT_CH_PSK) == PANE_NONE)
+    // proceed unless not wanted or not in use`
+    if (getSpotLabelType() == LBL_NONE || findPaneForChoice(PLOT_CH_PSK) == PANE_NONE)
         return;
 
-    for (int i = 0; i < PSKBAND_N; i++) {
+    // draw each that are enabled
+    for (int i = 0; i < HAMBAND_N; i++) {
         PSKBandStats &pbs = bstats[i];
         if (pbs.maxkm > 0 && TST_PSKBAND(i)) {
-
-            // always set max_s and at least init maxtag_b for searching and erasing
-            ll2s (pbs.maxlat, pbs.maxlng, pbs.max_s, targetSz());
-            memset (&pbs.maxtag_b, 0, sizeof (pbs.maxtag_b));
-
-            // show target and call as desired
-            if (markSpots() && overMap(pbs.max_s)) {
-
-                // target for sure
-                drawDistanceTarget (pbs.max_s, getMapColor(bands[i].cid));
-
-                // plus label if desired
-                if (labelSpots()) {
-                    setMapTagBox (pbs.maxcall, pbs.max_s, targetSz()+1, pbs.maxtag_b);
-                    uint16_t band_color = getMapColor(bands[i].cid);
-                    drawMapTag (pbs.maxcall, pbs.maxtag_b, getGoodTextColor(band_color), band_color);
-                }
+            int tw = getRawSpotRadius (findColSel((HamBandSetting)i));
+            SCoord s;
+            ll2s (pbs.maxll, s, tw);
+            if (overMap(s)) {
+                ll2sRaw (pbs.maxll, s, tw);
+                drawDistanceTarget (s, findColSel((HamBandSetting)i));
             }
         }
     }
@@ -291,114 +134,107 @@ static void drawPSKPane (const SBox &box)
     // clear
     prepPlotBox (box);
 
+    // handy
+    bool use_call = (psk_mask & PSKMB_CALL) != 0;
+    bool of_de = (psk_mask & PSKMB_OFDE) != 0;
+    bool ispsk = (psk_mask & PSKMB_SRCMASK) == PSKMB_PSK;
+    bool iswspr = (psk_mask & PSKMB_SRCMASK) == PSKMB_WSPR;
+
     // title
     static const char *title = "Live Spots";
     selectFontStyle (LIGHT_FONT, SMALL_FONT);
     uint16_t tw = getTextWidth(title);
     tft.setTextColor (LIVE_COLOR);
-    tft.setCursor (box.x + (box.w - tw)/2, box.y + 27);
+    tft.setCursor (box.x + (box.w - tw)/2, box.y + PANETITLE_H);
     tft.print (title);
 
-    // DE maid for some titles
-    char de_maid[MAID_CHARLEN];
-    getNVMaidenhead (NV_DE_GRID, de_maid);
-    de_maid[4] = '\0';
+    // set name to call or 4x grid
+    char name[20];
+    if (use_call) {
+        strcpy (name, getCallsign());
+    } else {
+        char de_maid[MAID_CHARLEN];
+        getNVMaidenhead (NV_DE_GRID, de_maid);
+        snprintf (name, sizeof(name), "%.4s", de_maid);
+    }
 
-    // show which list and source
+    // show how and when
     selectFontStyle (LIGHT_FONT, FAST_FONT);
     tft.setTextColor (RA8875_WHITE);
     char where_how[100];
-    bool ispsk = (psk_mask & PSKMB_SRCMASK) == PSKMB_PSK;
-    bool iswspr = (psk_mask & PSKMB_SRCMASK) == PSKMB_WSPR;
     snprintf (where_how, sizeof(where_how), "%s %s - %s %d %s",
-                psk_mask & PSKMB_OFDE ? "of" : "by",
-                psk_mask & PSKMB_CALL ? getCallsign() : de_maid,
+                of_de ? "of" : "by", name,
                 (ispsk ? "PSK" : (iswspr ? "WSPR" : "RBN")),
                 psk_maxage_mins < 60 ? psk_maxage_mins : psk_maxage_mins/60,
                 psk_maxage_mins < 60 ? "mins" : (psk_maxage_mins == 60 ? "hour" : "hrs"));
     uint16_t whw = getTextWidth(where_how);
-    tft.setCursor (box.x + (box.w-whw)/2, box.y + box.h/4);
+    tft.setCursor (box.x + (box.w-whw)/2, box.y + SUBTITLE_Y0);
     tft.print (where_how);
 
     // table
-    #define TBLHGAP (box.w/20)
-    #define TBCOLW (43*box.w/100)
-    #define TBLRH (PLOTBOX123_H/PSKBAND_N)      // really each /2 but that loses too much precision
-    for (int i = 0; i < PSKBAND_N; i++) {
-        int row = i % (PSKBAND_N/2);
-        int col = i / (PSKBAND_N/2);
-        uint16_t x = box.x + TBLHGAP + col*(TBCOLW+TBLHGAP);
-        uint16_t y = box.y + 3*box.h/8 + row*TBLRH;
+    for (int i = 0; i < HAMBAND_N; i++) {
+        int row = i % (HAMBAND_N/2);
+        int col = i / (HAMBAND_N/2);
+        uint16_t x = box.x + TBLHGAP + col*(TBLCOLW+TBLHGAP);
+        uint16_t y = box.y + LISTING_Y0 + row*TBLROWH;
         char report[30];
         if (psk_showdist) {
             float d = bstats[i].maxkm;
-            if (!useMetricUnits())
+            if (!showDistKm())
                 d *= MI_PER_KM;
-            snprintf (report, sizeof(report), "%3sm %5.0f", bands[i].name, d);
+            snprintf (report, sizeof(report), "%3sm %5.0f", findBandName((HamBandSetting)i), d);
         } else
-            snprintf (report, sizeof(report), "%3sm %5d", bands[i].name, bstats[i].count);
+            snprintf (report, sizeof(report), "%3sm %5d", findBandName((HamBandSetting)i), bstats[i].count);
         if (TST_PSKBAND(i)) {
-            uint16_t map_col = getMapColor(bands[i].cid);
+            uint16_t map_col = getMapColor(findColSel((HamBandSetting)i));
             uint16_t txt_col = getGoodTextColor(map_col);
-            tft.fillRect (x, y-1, TBCOLW, box.h/14, map_col);
+            tft.fillRect (x, y-LISTING_OS+1, TBLCOLW, TBLROWH-3, map_col);      // leave black below
             tft.setTextColor (txt_col);
             tft.setCursor (x+2, y);
             tft.print (report);
         } else {
             // disabled, always show but diminished
-            tft.fillRect (x, y-1, TBCOLW, box.h/14, RA8875_BLACK);
+            tft.fillRect (x, y-LISTING_OS+1, TBLCOLW, TBLROWH-3, RA8875_BLACK);
             tft.setTextColor (GRAY);
             tft.setCursor (x+2, y);
             tft.print (report);
         }
     }
 
-    // label
-    const char *label = psk_showdist ? (useMetricUnits() ? "Max distance (km)" : "Max distance (mi)")
+    // caption
+    const char *label = psk_showdist ? (showDistKm() ? "Max distance (km)" : "Max distance (mi)")
                                      : "Counts";
     uint16_t lw = getTextWidth (label);
-    uint16_t x = box.x + (box.w-lw)/2;
-    if (psk_showdist)
-        x -= 2*targetSz();
-    uint16_t y = box.y + box.h - 15;
+    uint16_t lx = box.x + (box.w-lw)/2;
+    uint16_t ly = box.y + box.h - SUBHEAD_DYUP;
     tft.setTextColor (RA8875_WHITE);
-    tft.setCursor (x, y);
+    tft.setCursor (lx, ly);
     tft.print (label);
-
-    // show a target example if showing distance
-    if (psk_showdist) {
-        SCoord s;
-        s.x = tft.getCursorX() + 3 + targetSz();
-        s.y = y + 3;
-        drawDistanceTarget (s, RA8875_BLACK);
-    }
 }
 
-/* query PSK reporter or WSPR for new reports, draw results and return whether all ok
+/* retrieve spots into reports[] according to current settings.
+ * return whether io ok.
  */
-bool updatePSKReporter (const SBox &box)
+static bool retrievePSK (void)
 {
-#if defined (_IS_ESP8266)
-    // erase current max distance markers
-    eraseFarthestPSKSpots();
-#endif
-
+    // get fresh
     WiFiClient psk_client;
     bool ok = false;
-    int n_totspots = 0;
 
-    // handy DE maid if needed
+    // query type
+    bool ispsk = (psk_mask & PSKMB_SRCMASK) == PSKMB_PSK;
+    bool iswspr = (psk_mask & PSKMB_SRCMASK) == PSKMB_WSPR;
+    bool isrbn = (psk_mask & PSKMB_SRCMASK) == PSKMB_RBN;
+    bool use_call = (psk_mask & PSKMB_CALL) != 0;
+    bool of_de = (psk_mask & PSKMB_OFDE) != 0;
+
+    // handy 4x DE maid if needed
     char de_maid[MAID_CHARLEN];
     getNVMaidenhead (NV_DE_GRID, de_maid);
     de_maid[4] = '\0';
 
     // build query
     char query[100];
-    bool ispsk = (psk_mask & PSKMB_SRCMASK) == PSKMB_PSK;
-    bool iswspr = (psk_mask & PSKMB_SRCMASK) == PSKMB_WSPR;
-    bool isrbn = (psk_mask & PSKMB_SRCMASK) == PSKMB_RBN;
-    bool use_call = (psk_mask & PSKMB_CALL) != 0;
-    bool of_de = (psk_mask & PSKMB_OFDE) != 0;
     if (ispsk)
         strcpy_P (query, psk_page);
     else if (iswspr)
@@ -411,7 +247,7 @@ bool updatePSKReporter (const SBox &box)
                                         use_call ? "call" : "grid",
                                         use_call ? getCallsign() : de_maid,
                                         psk_maxage_mins*60 /* wants seconds */);
-    Serial.printf (_FX("PSK: query: %s\n"), query);
+    Serial.printf ("PSK: query: %s\n", query);
 
     // fetch and fill reports[]
     resetWatchdog();
@@ -424,11 +260,14 @@ bool updatePSKReporter (const SBox &box)
 
         // skip header
         if (!httpSkipHeader (psk_client)) {
-            Serial.print (F("PSK: no header\n"));
+            Serial.print ("PSK: no header\n");
             goto out;
         }
 
-        // reset
+        // consider io ok
+        ok = true;
+
+        // reset lists
         n_reports = 0;
         memset (bstats, 0, sizeof(bstats));
 
@@ -436,139 +275,159 @@ bool updatePSKReporter (const SBox &box)
         char line[100];
         while (getTCPLine (psk_client, line, sizeof(line), NULL)) {
 
-            // Serial.printf (_FX("PSK: fetched %s\n"), line);
+            // Serial.printf ("PSK: fetched %s\n", line);
 
-            // parse. N.B. match sscanf sizes with elements
-            PSKReport new_r;
-            memset (&new_r, 0, sizeof(new_r));
+            // parse.
+            // N.B. match sscanf sizes with array sizes
+            // N.B. first grid/call pair is always TX, second always RX; which is DE depends on PSKMB_OFDE
+            DXSpot new_sp;
+            memset (&new_sp, 0, sizeof(new_sp));
             long posting_temp;
-            if (sscanf (line, "%ld,%9[^,],%19[^,],%9[^,],%19[^,],%19[^,],%ld,%d",
-                            &posting_temp, new_r.txgrid, new_r.txcall, new_r.rxgrid, new_r.rxcall,
-                            new_r.mode, &new_r.Hz, &new_r.snr) != 8) {
-                Serial.printf (_FX("PSK: %s\n"), line);
+            long Hz_temp;
+            if (sscanf (line, "%ld,%6[^,],%11[^,],%6[^,],%11[^,],%7[^,],%ld,%f", &posting_temp,
+                            new_sp.tx_grid, new_sp.tx_call, new_sp.rx_grid, new_sp.rx_call,
+                            new_sp.mode, &Hz_temp, &new_sp.snr) != 8) {
+                Serial.printf ("PSK: %s\n", line);
                 goto out;
             }
-            new_r.posting = posting_temp;
+            new_sp.spotted = posting_temp;
+            new_sp.kHz = Hz_temp * 1e-3F;
 
-            // RBN does not provide txgrid but it must be us -- TODO really?
+            // RBN does not provide tx_grid but it must be us. N.B. this will be blank from rbndaemon
             if (isrbn)
-                strcpy (new_r.txgrid, de_maid);
+                strcpy (new_sp.tx_grid, de_maid);
 
-            // count each line
-            n_totspots++;
-
-            // add to reports[] if meets all requirements
-            const char *msg_call = of_de ? new_r.txcall : new_r.rxcall;
-            const char *msg_grid = of_de ? new_r.txgrid : new_r.rxgrid;
-            const char *other_grid = of_de ? new_r.rxgrid : new_r.txgrid;
-            const int band = findBand(new_r.Hz);
-            const bool band_ok = band >= 0 && band < PSKBAND_N;
-            if (band_ok && maidenhead2ll (new_r.dx_ll, other_grid)
-                                && ((use_call && strcasecmp (getCallsign(), msg_call) == 0)
-                                        || (!use_call && strncasecmp (de_maid, msg_grid, 4) == 0))) {
-
-
-                // dither ll a little so duplicate locations are unique on map
-                ditherLL (new_r.dx_ll);
-
-                // update count of this band and total
-                bstats[band].count++;
-
-            #if defined (_IS_UNIX)
-
-                // add to reports[] if want this band for plotting
-                if (TST_PSKBAND(band)) {
-
-                    // grow reports array if out of room
-                    if (n_reports + 1 > n_malloced) {
-                        reports = (PSKReport *) realloc (reports, (n_malloced += 100) * sizeof(PSKReport));
-                        if (!reports)
-                            fatalError (_FX("Live Spots: no mem %d"), n_malloced);
-                    }
-
-                    // save new spot
-                    reports[n_reports++] = new_r;
-                }
-
-            #endif // _IS_UNIX
-
-                // update max distance and its location for this band. need all bands for the pane table.
-                float dist, bearing;        
-                propDEPath (false, new_r.dx_ll, &dist, &bearing);  // always show short path to match map
-                dist *= KM_PER_MI * ERAD_M;                     // convert core angle to surface km
-                PSKBandStats &pbs = bstats[band];
-                if (dist > pbs.maxkm) {
-                    pbs.maxkm = dist;
-                    pbs.maxlat = new_r.dx_ll.lat;
-                    pbs.maxlng = new_r.dx_ll.lng;
-                    if (labelSpots()) {
-                        const char *dx_call = (psk_mask & PSKMB_OFDE) ? new_r.rxcall : new_r.txcall;
-                        if (plotSpotCallsigns())
-                            strcpy (pbs.maxcall, dx_call);
-                        else
-                            findCallPrefix (dx_call, pbs.maxcall);
-                    }
-                    // N.B. do not set max_s or maxtag_b here, rely on drawFarthestPSKSpots() as needed
-
-            #if defined (_IS_UNIX)
-                    spot_maxrpt[band] = n_reports-1;            // -1 because already incremented
-            #endif // _IS_UNIX
-
-                }
+            // convert grids to ll
+            if (!maidenhead2ll (new_sp.tx_ll, new_sp.tx_grid)) {
+                Serial.printf ("PSK: RX grid? %s\n", line);
+                continue;
             }
+            if (!maidenhead2ll (new_sp.rx_ll, new_sp.rx_grid)) {
+                Serial.printf ("PSK: RX grid? %s\n", line);
+                continue;
+            }
+
+            // check for unknown or unsupported band
+            const HamBandSetting band = findHamBand (new_sp.kHz);
+            if (band == HAMBAND_NONE) {
+                Serial.printf ("PSK: band? %s\n", line);
+                continue;
+            }
+
+            // DXCC
+            if (!call2DXCC (new_sp.tx_call, new_sp.tx_dxcc)) {
+                Serial.printf ("PSK: no DXCC for %s\n", new_sp.tx_call);
+                continue;
+            }
+            if (!call2DXCC (new_sp.rx_call, new_sp.rx_dxcc)) {
+                Serial.printf ("PSK: no DXCC for %s\n", new_sp.rx_call);
+                continue;
+            }
+
+            // update stats for this band
+            PSKBandStats &pbs = bstats[band];
+
+            // update count of this band
+            pbs.count++;
+
+            // dither ll for unique selection
+            ditherLL (new_sp.tx_ll);
+            ditherLL (new_sp.rx_ll);
+
+            // finally! save new report, grow array if out of room
+            if ( !(n_reports < n_malloced) ) {
+                reports = (DXSpot *) realloc (reports, (n_malloced += 100) * sizeof(DXSpot));
+                if (!reports)
+                    fatalError ("Live Spots: no mem %d", n_malloced);
+            }
+            reports[n_reports] = new_sp;         // N.B. do not inc yet, used last
+
+            // check each end for farthest from DE
+            float tx_dist, rx_dist, bearing;        
+            propDEPath (false, new_sp.tx_ll, &tx_dist, &bearing);
+            propDEPath (false, new_sp.rx_ll, &rx_dist, &bearing);
+            tx_dist *= KM_PER_MI * ERAD_M;                         // convert core angle to surface km
+            rx_dist *= KM_PER_MI * ERAD_M;                         // convert core angle to surface km
+            bool tx_gt_rx = (tx_dist > rx_dist);
+            float max_dist = tx_gt_rx ? tx_dist : rx_dist;
+            if (max_dist > pbs.maxkm) {
+
+                // update pbs for this band with farther spot
+                LatLong max_ll = tx_gt_rx ? new_sp.tx_ll : new_sp.rx_ll;
+                const char *call = tx_gt_rx ? new_sp.tx_call : new_sp.rx_call;
+                pbs.maxkm = max_dist;
+                pbs.maxll = max_ll;
+                if (getSpotLabelType() == LBL_PREFIX)
+                    findCallPrefix (call, pbs.maxcall);
+                else
+                    strcpy (pbs.maxcall, call);
+
+                // newest spot is now farthest for this band
+                spot_maxrpt[band] = n_reports;
+            }
+
+            // ok, another report
+            n_reports++;
         }
-
-    #if defined (_IS_UNIX)
-
-        // finished collecting reports now make the fast lookup tree.
-        // N.B. can't build incrementally because left/right pointers can move with each realloc
-        kd3tree = (KD3Node *) realloc (kd3tree, n_reports * sizeof(KD3Node));
-        if (!kd3tree && n_reports > 0)
-            fatalError (_FX("Live Spots tree: %d"), n_reports);
-        memset (kd3tree, 0, n_reports * sizeof(KD3Node));
-        for (int i = 0; i < n_reports; i++) {
-            KD3Node *kp = &kd3tree[i];
-            PSKReport *rp = &reports[i];
-            ll2KD3Node (rp->dx_ll, kp);
-            kp->data = (void*) rp;
-        }
-        kd3root = mkKD3NodeTree (kd3tree, n_reports, 0);
-
-    #endif
-
-        // ok
-        ok = true;
 
     } else
-        Serial.print (F("PSK: Spots connection failed\n"));
+        Serial.print ("PSK: Spots connection failed\n");
 
 out:
     // reset counts if trouble
     if (!ok) {
         n_reports = 0;
-        for (int i = 0; i < PSKBAND_N; i++) {
+        for (int i = 0; i < HAMBAND_N; i++) {
             bstats[i].count = -1;
             bstats[i].maxkm = -1;
         }
     }
 
-    drawPSKPane (box);
-
-#if defined (_IS_ESP8266)
-    // draw everyhing in case erase clobbered
-    drawAllSymbols(true);
-#endif
-
     // finish up
     psk_client.stop();
-    Serial.printf (_FX("PSK: found %d %s reports %s %s\n"),
-                        n_totspots,
+    Serial.printf ("PSK: found %d %s reports %s %s\n",
+                        n_reports,
                         (ispsk ? "PSK" : (iswspr ? "WSPR" : "RBN")),
                         of_de ? "of" : "by",
                         use_call ? getCallsign() : de_maid);
 
-    // already reported any problems
+    // already logged any problems
     return (ok);
+}
+
+/* query PSK reporter etc for new reports, draw results and return whether all ok
+ */
+bool updatePSKReporter (const SBox &box, bool force)
+{
+    // save last retrieval settings to know whether reports[] can be reused
+    static time_t next_update;                          // don't update faster than PSK_INTERVAL
+    static uint8_t my_psk_mask;                         // setting used for reports[]
+    static uint32_t my_psk_bands;                       // setting used for reports[]
+    static uint16_t my_psk_maxage_mins;                 // setting used for reports[]
+    static bool last_ok;                                // used to force retry
+
+    // just use cache if settings all match and not too old
+    if (!force && last_ok && reports && n_malloced > 0 && myNow() < next_update
+                            && my_psk_mask == psk_mask && my_psk_maxage_mins == psk_maxage_mins
+                            && my_psk_bands == psk_bands) {
+        drawPSKPane (box);
+        return (true);
+    }
+
+    // save settings
+    my_psk_mask = psk_mask;
+    my_psk_maxage_mins = psk_maxage_mins;
+    my_psk_bands = psk_bands;
+    next_update = myNow() + PSK_INTERVAL;;
+
+    // get fresh
+    last_ok = retrievePSK();
+
+    // display whatever we got regardless
+    drawPSKPane (box);
+
+    // reply
+    return (last_ok);
 }
 
 /* check for tap at s known to be within a PLOT_CH_PSK box.
@@ -577,7 +436,7 @@ out:
 bool checkPSKTouch (const SCoord &s, const SBox &box)
 {
     // done if tap title
-    if (s.y < box.y+box.h/5)
+    if (s.y < box.y + PANETITLE_H)
         return (false);
 
     // handy current state
@@ -591,43 +450,43 @@ bool checkPSKTouch (const SCoord &s, const SBox &box)
     // menu
     #define PRI_INDENT 2
     #define SEC_INDENT 12
-    #define MI_N (PSKBAND_N + 18)                                // bands + controls
+    #define MI_N (HAMBAND_N + 18)                                // ham_bands + controls
     MenuItem mitems[MI_N];
 
     // runMenu() expects column-major entries
 
-    mitems[0] = {MENU_1OFN,  isrbn, 1, PRI_INDENT, "RBN"};
-    mitems[1] = {MENU_LABEL, false, 0, PRI_INDENT, "Spot:"};
-    mitems[2] = {MENU_LABEL, false, 0, PRI_INDENT, "What:"};
-    mitems[3] = {MENU_LABEL, false, 0, PRI_INDENT, "Show:"};
-    mitems[4] = {MENU_LABEL, false, 5, PRI_INDENT, "Age:"};
-    mitems[5] = {MENU_1OFN,  false, 6, 5, "1 hr"};
-    mitems[6] = {MENU_AL1OFN, TST_PSKBAND(PSKBAND_160M), 4, SEC_INDENT, bands[PSKBAND_160M].name};
-    mitems[7] = {MENU_AL1OFN, TST_PSKBAND(PSKBAND_80M),  4, SEC_INDENT, bands[PSKBAND_80M].name};
-    mitems[8] = {MENU_AL1OFN, TST_PSKBAND(PSKBAND_60M),  4, SEC_INDENT, bands[PSKBAND_60M].name};
-    mitems[9] = {MENU_AL1OFN, TST_PSKBAND(PSKBAND_40M),  4, SEC_INDENT, bands[PSKBAND_40M].name};
+    mitems[0] = {MENU_1OFN,  isrbn, 1, PRI_INDENT, "RBN", 0};
+    mitems[1] = {MENU_LABEL, false, 0, PRI_INDENT, "Spot:", 0};
+    mitems[2] = {MENU_LABEL, false, 0, PRI_INDENT, "What:", 0};
+    mitems[3] = {MENU_LABEL, false, 0, PRI_INDENT, "Show:", 0};
+    mitems[4] = {MENU_LABEL, false, 5, PRI_INDENT, "Age:", 0};
+    mitems[5] = {MENU_1OFN,  false, 6, 5, "1 hr", 0};
+    mitems[6] = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_160M), 4, SEC_INDENT, findBandName(HAMBAND_160M), 0};
+    mitems[7] = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_80M),  4, SEC_INDENT, findBandName(HAMBAND_80M), 0};
+    mitems[8] = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_60M),  4, SEC_INDENT, findBandName(HAMBAND_60M), 0};
+    mitems[9] = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_40M),  4, SEC_INDENT, findBandName(HAMBAND_40M), 0};
 
-    mitems[10] = {MENU_1OFN, ispsk,     1, PRI_INDENT, "PSK"};
-    mitems[11] = {MENU_1OFN, of_de,     2, PRI_INDENT, "of DE"};
-    mitems[12] = {MENU_1OFN, use_call,  3, PRI_INDENT, "Call"};
-    mitems[13] = {MENU_1OFN, show_dist, 7, PRI_INDENT, "MaxDst"};
-    mitems[14] = {MENU_1OFN, false,     6, PRI_INDENT, "15 min"};
-    mitems[15] = {MENU_1OFN, false,     6, PRI_INDENT, "6 hrs"};
-    mitems[16] = {MENU_AL1OFN, TST_PSKBAND(PSKBAND_30M),  4, SEC_INDENT, bands[PSKBAND_30M].name};
-    mitems[17] = {MENU_AL1OFN, TST_PSKBAND(PSKBAND_20M),  4, SEC_INDENT, bands[PSKBAND_20M].name};
-    mitems[18] = {MENU_AL1OFN, TST_PSKBAND(PSKBAND_17M),  4, SEC_INDENT, bands[PSKBAND_17M].name};
-    mitems[19] = {MENU_AL1OFN, TST_PSKBAND(PSKBAND_15M),  4, SEC_INDENT, bands[PSKBAND_15M].name};
+    mitems[10] = {MENU_1OFN, ispsk,     1, PRI_INDENT, "PSK", 0};
+    mitems[11] = {MENU_1OFN, of_de,     2, PRI_INDENT, "of DE", 0};
+    mitems[12] = {MENU_1OFN, use_call,  3, PRI_INDENT, "Call", 0};
+    mitems[13] = {MENU_1OFN, show_dist, 7, PRI_INDENT, "MaxDst", 0};
+    mitems[14] = {MENU_1OFN, false,     6, PRI_INDENT, "15 min", 0};
+    mitems[15] = {MENU_1OFN, false,     6, PRI_INDENT, "6 hrs", 0};
+    mitems[16] = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_30M),  4, SEC_INDENT, findBandName(HAMBAND_30M), 0};
+    mitems[17] = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_20M),  4, SEC_INDENT, findBandName(HAMBAND_20M), 0};
+    mitems[18] = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_17M),  4, SEC_INDENT, findBandName(HAMBAND_17M), 0};
+    mitems[19] = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_15M),  4, SEC_INDENT, findBandName(HAMBAND_15M), 0};
 
-    mitems[20] = {MENU_1OFN, iswspr,    1, PRI_INDENT, "WSPR"};
-    mitems[21] = {MENU_1OFN, !of_de,    2, PRI_INDENT, "by DE"};
-    mitems[22] = {MENU_1OFN, !use_call, 3, PRI_INDENT, "Grid"};
-    mitems[23] = {MENU_1OFN, !show_dist,7, PRI_INDENT, "Count"};
-    mitems[24] = {MENU_1OFN, false,     6, PRI_INDENT, "30 min"};
-    mitems[25] = {MENU_1OFN, false,     6, PRI_INDENT, "24 hrs"};
-    mitems[26] = {MENU_AL1OFN, TST_PSKBAND(PSKBAND_12M),  4, SEC_INDENT, bands[PSKBAND_12M].name};
-    mitems[27] = {MENU_AL1OFN, TST_PSKBAND(PSKBAND_10M),  4, SEC_INDENT, bands[PSKBAND_10M].name};
-    mitems[28] = {MENU_AL1OFN, TST_PSKBAND(PSKBAND_6M),   4, SEC_INDENT, bands[PSKBAND_6M].name};
-    mitems[29] = {MENU_AL1OFN, TST_PSKBAND(PSKBAND_2M),   4, SEC_INDENT, bands[PSKBAND_2M].name};
+    mitems[20] = {MENU_1OFN, iswspr,    1, PRI_INDENT, "WSPR", 0};
+    mitems[21] = {MENU_1OFN, !of_de,    2, PRI_INDENT, "by DE", 0};
+    mitems[22] = {MENU_1OFN, !use_call, 3, PRI_INDENT, "Grid", 0};
+    mitems[23] = {MENU_1OFN, !show_dist,7, PRI_INDENT, "Count", 0};
+    mitems[24] = {MENU_1OFN, false,     6, PRI_INDENT, "30 min", 0};
+    mitems[25] = {MENU_1OFN, false,     6, PRI_INDENT, "24 hrs", 0};
+    mitems[26] = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_12M),  4, SEC_INDENT, findBandName(HAMBAND_12M), 0};
+    mitems[27] = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_10M),  4, SEC_INDENT, findBandName(HAMBAND_10M), 0};
+    mitems[28] = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_6M),   4, SEC_INDENT, findBandName(HAMBAND_6M), 0};
+    mitems[29] = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_2M),   4, SEC_INDENT, findBandName(HAMBAND_2M), 0};
 
     // set age
     switch (psk_maxage_mins) {
@@ -636,7 +495,7 @@ bool checkPSKTouch (const SCoord &s, const SBox &box)
     case 60:   mitems[5].set  = true; break;
     case 360:  mitems[15].set = true; break;
     case 1440: mitems[25].set = true; break;
-    default:   fatalError (_FX("Bad psk_maxage_mins: %d"), psk_maxage_mins);
+    default:   fatalError ("Bad psk_maxage_mins: %d", psk_maxage_mins);
     }
 
     // create a box for the menu
@@ -647,7 +506,7 @@ bool checkPSKTouch (const SCoord &s, const SBox &box)
 
     // run
     SBox ok_b;
-    MenuInfo menu = {menu_b, ok_b, true, false, 3, MI_N, mitems};
+    MenuInfo menu = {menu_b, ok_b, UF_CLOCKSOK, M_CANCELOK, 3, MI_N, mitems};
     if (runMenu (menu)) {
 
         // handy
@@ -661,7 +520,7 @@ bool checkPSKTouch (const SCoord &s, const SBox &box)
         if (rbn_set && (!ofDE_set || !call_set)) {
 
             // show error briefly then restore existing settings
-            plotMessage (box, RA8875_RED, _FX("RBN requires \"of DE\" and \"Call\""));
+            plotMessage (box, RA8875_RED, "RBN requires \"of DE\" and \"Call\"");
             wdDelay (5000);
             drawPSKPane(box);
 
@@ -674,21 +533,20 @@ bool checkPSKTouch (const SCoord &s, const SBox &box)
             if (call_set)
                 psk_mask |= PSKMB_CALL;
 
-            // set new bands
+            // set new ham_bands
             psk_bands = 0;
-            if (mitems[6].set)  SET_PSKBAND(PSKBAND_160M);
-            if (mitems[7].set)  SET_PSKBAND(PSKBAND_80M);
-            if (mitems[8].set)  SET_PSKBAND(PSKBAND_60M);
-            if (mitems[9].set)  SET_PSKBAND(PSKBAND_40M);
-            if (mitems[16].set) SET_PSKBAND(PSKBAND_30M);
-            if (mitems[17].set) SET_PSKBAND(PSKBAND_20M);
-            if (mitems[18].set) SET_PSKBAND(PSKBAND_17M);
-            if (mitems[19].set) SET_PSKBAND(PSKBAND_15M);
-            if (mitems[26].set) SET_PSKBAND(PSKBAND_12M);
-            if (mitems[27].set) SET_PSKBAND(PSKBAND_10M);
-            if (mitems[28].set) SET_PSKBAND(PSKBAND_6M);
-            if (mitems[29].set) SET_PSKBAND(PSKBAND_2M);
-            Serial.printf (_FX("PSK: new bands mask 0x%x\n"), psk_bands);
+            if (mitems[6].set)  SET_PSKBAND(HAMBAND_160M);
+            if (mitems[7].set)  SET_PSKBAND(HAMBAND_80M);
+            if (mitems[8].set)  SET_PSKBAND(HAMBAND_60M);
+            if (mitems[9].set)  SET_PSKBAND(HAMBAND_40M);
+            if (mitems[16].set) SET_PSKBAND(HAMBAND_30M);
+            if (mitems[17].set) SET_PSKBAND(HAMBAND_20M);
+            if (mitems[18].set) SET_PSKBAND(HAMBAND_17M);
+            if (mitems[19].set) SET_PSKBAND(HAMBAND_15M);
+            if (mitems[26].set) SET_PSKBAND(HAMBAND_12M);
+            if (mitems[27].set) SET_PSKBAND(HAMBAND_10M);
+            if (mitems[28].set) SET_PSKBAND(HAMBAND_6M);
+            if (mitems[29].set) SET_PSKBAND(HAMBAND_2M);
 
             // get new age
             if (mitems[14].set)
@@ -702,7 +560,7 @@ bool checkPSKTouch (const SCoord &s, const SBox &box)
             else if (mitems[25].set)
                 psk_maxage_mins = 1440;
             else
-                fatalError (_FX("PSK: No menu age"));
+                fatalError ("PSK: No menu age");
 
             // get how to show
             psk_showdist = mitems[13].set;
@@ -711,7 +569,7 @@ bool checkPSKTouch (const SCoord &s, const SBox &box)
             savePSKState();
 
             // refresh with new criteria
-            updatePSKReporter (box);
+            updatePSKReporter (box, true);
         }
 
     } else  {
@@ -726,17 +584,19 @@ bool checkPSKTouch (const SCoord &s, const SBox &box)
 
 /* return current stats, if active
  */
-bool getPSKBandStats (PSKBandStats stats[PSKBAND_N], const char *names[PSKBAND_N])
+bool getPSKBandStats (PSKBandStats stats[HAMBAND_N], const char *names[HAMBAND_N])
 {
     if (findPaneForChoice(PLOT_CH_PSK) == PANE_NONE)
         return (false);
 
     // copy but zero out entries with 0 count
-    memcpy (stats, bstats, sizeof(PSKBandStats) * PSKBAND_N);
-    for (int i = 0; i < PSKBAND_N; i++) {
-        if (bstats[i].count == 0)
-            stats[i].maxkm = stats[i].maxlat = stats[i].maxlng = 0;
-        names[i] = bands[i].name;
+    memcpy (stats, bstats, sizeof(PSKBandStats) * HAMBAND_N);
+    for (int i = 0; i < HAMBAND_N; i++) {
+        if (bstats[i].count == 0) {
+            stats[i].maxkm = 0;
+            memset (&stats[i].maxll, 0, sizeof(stats[i].maxll));
+        }
+        names[i] = findBandName((HamBandSetting)i);
     }
 
     return (true);
@@ -744,70 +604,7 @@ bool getPSKBandStats (PSKBandStats stats[PSKBAND_N], const char *names[PSKBAND_N
 
 
 
-
-#if defined(_IS_UNIX)
-
-
-/* return whether the path for the given freq should be drawn dashed
- */
-bool getBandDashed (long Hz)
-{
-    int b = findBand (Hz);
-    return (b >= 0 && b < PSKBAND_N ? getColorDashed(bands[b].cid) : RA8875_BLACK);
-}
-
-/* draw path for the given report
- * UNIX only
- */
-static void drawPSKPath (const PSKReport &rpt)
-{
-    float dist, bear;
-    propPath (false, de_ll, sdelat, cdelat, rpt.dx_ll, &dist, &bear);
-    const int n_step = (int)(ceilf(dist/deg2rad(PATH_SEGLEN))) | 1;     // odd so dashed ends always drawn
-    const float step = dist/n_step;
-    bool dashed = getBandDashed (rpt.Hz);
-    uint16_t color = getBandColor(rpt.Hz);
-    SCoord dx_s = {0, 0};                                               // last path coord is DX
-    SCoord prev_s = {0, 0};                                             // .x == 0 means don't show
-    uint16_t lwRaw, mkRaw;                                              // raw path and marker sizes
-
-    getRawSpotSizes (lwRaw, mkRaw);
-
-    // N.B. compute each segment even if not showing paths in order to find dx_s
-    for (int i = 0; i <= n_step; i++) {     // fence posts
-        float r = i*step;
-        float ca, B;
-        SCoord s;
-        solveSphere (bear, r, sdelat, cdelat, &ca, &B);
-        ll2sRaw (asinf(ca), fmodf(de_ll.lng+B+5*M_PIF,2*M_PIF)-M_PIF, s, lwRaw);
-        if (prev_s.x > 0) {
-            if (segmentSpanOkRaw(prev_s, s, lwRaw)) {
-                if (lwRaw && (!dashed || n_step < 7 || (i & 1)))
-                    tft.drawLineRaw (prev_s.x, prev_s.y, s.x, s.y, lwRaw, color);
-                dx_s = s;
-            } else
-               s.x = 0;
-        }
-        prev_s = s;
-    } 
-
-    // mark dx end if desired
-    if (dx_s.x > 0 && markSpots()) {
-        if (psk_mask & PSKMB_OFDE) {
-            // DE is tx so DX is rx: draw a square
-            tft.fillRectRaw (dx_s.x-mkRaw, dx_s.y-mkRaw, 2*mkRaw, 2*mkRaw, color);
-            tft.drawRectRaw (dx_s.x-mkRaw, dx_s.y-mkRaw, 2*mkRaw, 2*mkRaw, RA8875_BLACK);
-        } else {
-            // DE is rx so DX is tx: draw a cicle (like an expanding wave??)
-            tft.fillCircleRaw (dx_s.x, dx_s.y, mkRaw, color);
-            tft.drawCircleRaw (dx_s.x, dx_s.y, mkRaw, RA8875_BLACK);
-        }
-    }
-}
-
-
 /* draw the current set of spot paths in reports[] if enabled
- * UNIX only
  */
 void drawPSKPaths ()
 {
@@ -815,92 +612,183 @@ void drawPSKPaths ()
     if (findPaneForChoice(PLOT_CH_PSK) == PANE_NONE)
         return;
 
+    // which end to mark
+    LabelOnMapEnd lom = (psk_mask & PSKMB_OFDE) ? LOME_RXEND : LOME_TXEND;
+
     if (psk_showdist) {
 
         // just show the longest path in each band
-        for (int i = 0; i < PSKBAND_N; i++)
-            if (bstats[i].maxkm > 0 && TST_PSKBAND(i))
-                drawPSKPath (reports[spot_maxrpt[i]]);
+        for (int i = 0; i < HAMBAND_N; i++) {
+            if (bstats[i].maxkm > 0 && TST_PSKBAND(i)) {
+                drawSpotPathOnMap (reports[spot_maxrpt[i]]);
+                drawSpotLabelOnMap (reports[spot_maxrpt[i]], lom, LOMD_ALL);
+            }
+        }
 
     } else {
 
-        // show paths to all spots
-        for (int i = 0; i < n_reports; i++)
-            drawPSKPath (reports[i]);
+        // show all paths first
+        for (int i = 0; i < n_reports; i++) {
+            DXSpot &s = reports[i];
+            if (TST_PSKBAND(findHamBand(s.kHz)))
+                drawSpotPathOnMap (s);
+        }
+
+        // then label all without text
+        for (int i = 0; i < n_reports; i++) {
+            // N.B. we know band in all reports[] are ok
+            DXSpot &s = reports[i];
+            if (TST_PSKBAND(findHamBand(s.kHz)))
+
+
+
+
+                drawSpotLabelOnMap (s, LOME_BOTH, LOMD_JUSTDOT);
+        }
+
+        // then finally label only the farthest with text
+        for (int i = 0; i < HAMBAND_N; i++)
+            if (bstats[i].maxkm > 0 && TST_PSKBAND(i))
+                drawSpotLabelOnMap (reports[spot_maxrpt[i]], lom, LOMD_ALL);
     }
 }
 
-/* return report of spot closest to ll as appropriate.
- * UNIX only
+/* report spot closest to ll and which end to mark on map, if any within MAX_CSR_DIST.
  */
-bool getClosestPSK (const LatLong &ll, const PSKReport **rpp)
+bool getClosestPSK (const LatLong &ll, DXSpot *sp, LatLong *mark_ll)
 {
-    // ignore if not in any rotation set
-    if (findPaneForChoice(PLOT_CH_PSK) == PANE_NONE)
-        return (false);
+    // which way?
+    bool of_de = (psk_mask & PSKMB_OFDE) != 0;
 
-    // max dist else all
+    if (psk_showdist) {
 
-    // get screen loc of ll
-    SCoord ll_s;
-    ll2s (ll, ll_s, targetSz());
-    if (!overMap(ll_s))
-        return (false);
+        // just check bstats if only showing farthest spots
 
-    // find closest among bstats[] (which were set when plotted so must be ok)
-    int min_d = 10000;
-    int min_rpt = 0;
-    for (int i = 0; i < PSKBAND_N; i++) {
-        if (bstats[i].maxkm > 0 && TST_PSKBAND(i)) {
-            SCoord &s = bstats[i].max_s;
-            int d = abs((int)s.x - (int)ll_s.x) + abs((int)s.y - (int)ll_s.y);
-            if (d < min_d) {
-                min_d = d;
-                min_rpt = spot_maxrpt[i];
+        float min_d = 0;
+        int min_i = -1;
+        for (int i = 0; i < HAMBAND_N; i++) {
+            if (TST_PSKBAND(i)) {
+                float d = simpleSphereDist (ll, bstats[i].maxll);
+                if (min_i < 0 || d < min_d) {
+                    min_d = d;
+                    min_i = i;
+                }
             }
+        }
+
+        if (min_i >= 0 && min_d*ERAD_M < MAX_CSR_DIST) {
+            *sp = reports[spot_maxrpt[min_i]];
+            *mark_ll = of_de ? sp->rx_ll : sp->tx_ll;
+            return (true);
+        }
+    
+    } else {
+
+        // check all spots in displayed ham_bands.
+        // N.B. can't use getClosestSpot() because of TST_PSKBAND
+
+        float min_d = 0;
+        int min_i = -1;
+        for (int i = 0; i < n_reports; i++) {
+            DXSpot &s = reports[i];
+            if (TST_PSKBAND(findHamBand(s.kHz))) {
+                float d = simpleSphereDist (ll, s.rx_ll);
+                if (min_i < 0 || d < min_d) {
+                    min_d = d;
+                    min_i = i;
+                }
+                d = simpleSphereDist (ll, s.tx_ll);
+                if (min_i < 0 || d < min_d) {
+                    min_d = d;
+                    min_i = i;
+                }
+            }
+        }
+
+        if (min_i >= 0 && min_d*ERAD_M < MAX_CSR_DIST) {
+            *sp = reports[min_i];
+            *mark_ll = of_de ? sp->rx_ll : sp->tx_ll;
+            return (true);
         }
     }
 
-    // good if within symbol
-    if (min_d <= targetSz()) {
-        *rpp = &reports[min_rpt];
-        return (true);
-    }
-
-    // ignore others if no tree yet or just showing max
-    if (psk_showdist || !kd3tree || !kd3root)
-        return (false);
-
-    // find node clostest to ll
-    KD3Node target_node, *best_node;
-    ll2KD3Node (ll, &target_node);
-    best_node = NULL;
-    float best_dist = 0;
-    int n_visited = 0;
-    nearestKD3Node (kd3root, &target_node, 0, &best_node, &best_dist, &n_visited);
-
-    float best_miles = nearestKD3Dist2Miles (best_dist);
-    // LatLong best_ll;
-    // KD3Node2ll (*best_node, best_ll);
-    // printf ("*** target (%7.2f,%7.2f) found (%7.2f,%7.2f) dist %7.2f using %d/%d\n",
-                // ll.lat_d, ll.lng_d, best_ll.lat_d, best_ll.lng_d, best_miles, n_visited, n_reports);
-
-    if (best_miles < MAX_CSR_DIST) {
-        *rpp = (PSKReport *) best_node->data;
-        return (true);
-    }
-
-    // nope
+    // none
     return (false);
 }
 
+/* if ms is over one of the bands in our pane report its info and where to mark on map.
+ * return whether ms is really over any of our bands.
+ */
+bool getMaxDistPSK (const SCoord &ms, DXSpot *sp, LatLong *mark_ll)
+{
+    // ignore if not currently up
+    PlotPane pp = findPaneChoiceNow(PLOT_CH_PSK);
+    if (pp == PANE_NONE)
+        return (false);
+
+    // which way?
+    bool of_de = (psk_mask & PSKMB_OFDE) != 0;
+
+    // find band where ms is located
+    const SBox &box = plot_b[pp];
+    SBox band_box;
+    band_box.w = TBLCOLW;
+    band_box.h = TBLROWH;
+    for (int i = 0; i < HAMBAND_N; i++) {
+        int row = i % (HAMBAND_N/2);
+        int col = i / (HAMBAND_N/2);
+        band_box.x = box.x + TBLHGAP + col*(TBLCOLW+TBLHGAP);
+        band_box.y = box.y + LISTING_Y0 + row*TBLROWH;
+        if (TST_PSKBAND(i) && inBox (ms, band_box) && bstats[i].maxkm > 0) {
+            // report farthest spot on this band
+            *sp = reports[spot_maxrpt[i]];
+            *mark_ll = of_de ? sp->rx_ll : sp->tx_ll;
+            return (true);
+        }
+    }
+
+    return (false);
+}
+
+
 /* return PSKReports list
  */
-void getPSKSpots (const PSKReport* &rp, int &n_rep)
+void getPSKSpots (const DXSpot* &rp, int &n_rep)
 {
     rp = reports;
     n_rep = n_reports;
 }
 
+/* return drawing color for the given frequency, or black if not found.
+ */
+uint16_t getBandColor (float kHz)
+{
+    HamBandSetting b = findHamBand (kHz);
+    return (b != HAMBAND_NONE ? getMapColor(findColSel(b)) : RA8875_BLACK);
+}
 
-#endif // _IS_UNIX
+/* return whether the path for the given freq should be drawn dashed
+ */
+bool getBandPathDashed (float kHz)
+{
+    HamBandSetting b = findHamBand (kHz);
+    return (b != HAMBAND_NONE ? getPathDashed(findColSel(b)) : false);
+}
+
+/* return width to draw a map path for the given frequency.
+ * returns 0 if band is turned off.
+ */
+int getRawBandPathWidth (float kHz)
+{
+    HamBandSetting b = findHamBand (kHz);
+    return (b != HAMBAND_NONE ? getRawPathWidth(findColSel(b)) : false);
+}
+
+/* return width to draw a map spot for the given frequency.
+ * always returns the size even if the path color is turned off.
+ */
+int getRawBandSpotRadius (float kHz)
+{
+    HamBandSetting b = findHamBand (kHz);
+    return (b != HAMBAND_NONE ? getRawSpotRadius (findColSel(b)) : RAWWIDEPATHSZ);
+}
