@@ -79,7 +79,7 @@ static const uint8_t nv_sizes[NV_N] = {
     NV_WIFI_SSID_LEN,           // NV_WIFI_SSID
     NV_WIFI_PW_OLD_LEN,         // NV_WIFI_PASSWD_OLD
     NV_CALLSIGN_LEN,            // NV_CALLSIGN
-    NV_SATNAME_LEN,             // NV_SATNAME
+    NV_SATNAME_LEN,             // NV_SAT1NAME
     1,                          // NV_DE_SRSS
 
     // 40
@@ -120,8 +120,8 @@ static const uint8_t nv_sizes[NV_N] = {
     // 65
     NV_NTPHOST_OLD_LEN,         // NV_NTPHOST_OLD
     1,                          // NV_GPIOOK
-    2,                          // NV_SATPATHCOLOR
-    2,                          // NV_SATFOOTCOLOR
+    2,                          // NV_SAT1COLOR
+    2,                          // NV_SAT2COLOR
     2,                          // NV_X11FLAGS
 
     // 70
@@ -358,7 +358,8 @@ static const uint8_t nv_sizes[NV_N] = {
     // 235
     1,                          // NV_MAXTLEAGE
     2,                          // NV_MINLBLDIST
-
+    NV_SATNAME_LEN,             // NV_SAT2NAME
+    1,                          // NV_PSK_SHOWPATH
 
 };
 

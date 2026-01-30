@@ -458,11 +458,11 @@ bool checkPlotTouch (TouchType tt, const SCoord &s, PlotPane pp)
         if (checkADIFTouch (s, box))
             return (true);
         in_top = true;
+        break;
     case PLOT_CH_DXPEDS:
         if (checkDXPedsTouch (s, box))
             return (true);
         in_top = true;
-        break;
         break;
 
     // tapping a BME below top rotates just among other BME and disables auto rotate.

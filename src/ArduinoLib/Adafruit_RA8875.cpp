@@ -1206,16 +1206,22 @@ void Adafruit_RA8875::fillCircleRaw(int16_t x0, int16_t y0, uint16_t r0, uint16_
         plotFillCircle (x0, y0, r0, fbpix);
 }
 
-void Adafruit_RA8875::drawTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2,
+void Adafruit_RA8875::drawTriangle (int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2,
     uint16_t color16)
 {
-	fbpix_t fbpix = RGB16TOFBPIX(color16);
 	x0 *= SCALESZ;
 	y0 *= SCALESZ;
 	x1 *= SCALESZ;
 	y1 *= SCALESZ;
 	x2 *= SCALESZ;
 	y2 *= SCALESZ;
+        drawTriangleRaw (x0, y0, x1, y1, x2, y2, color16);
+}
+
+void Adafruit_RA8875::drawTriangleRaw (int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2,
+    uint16_t color16)
+{
+	fbpix_t fbpix = RGB16TOFBPIX(color16);
 	pthread_mutex_lock (&fb_lock);
 	    plotLineRaw (x0, y0, x1, y1, 1, fbpix);
 	    plotLineRaw (x1, y1, x2, y2, 1, fbpix);
@@ -1224,16 +1230,22 @@ void Adafruit_RA8875::drawTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y
 	pthread_mutex_unlock (&fb_lock);
 }
 
-void Adafruit_RA8875::fillTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2,
+void Adafruit_RA8875::fillTriangle (int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2,
     uint16_t color16)
 {
-	fbpix_t fbpix = RGB16TOFBPIX(color16);
 	x0 *= SCALESZ;
 	y0 *= SCALESZ;
 	x1 *= SCALESZ;
 	y1 *= SCALESZ;
 	x2 *= SCALESZ;
 	y2 *= SCALESZ;
+        fillTriangleRaw (x0, y0, x1, y1, x2, y2, color16);
+}
+
+void Adafruit_RA8875::fillTriangleRaw (int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2,
+    uint16_t color16)
+{
+	fbpix_t fbpix = RGB16TOFBPIX(color16);
 
         // sort in increasing y
         if (y0 > y2)

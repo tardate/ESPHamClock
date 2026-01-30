@@ -10,6 +10,7 @@ uint8_t psk_mask;                               // one of PSKModeBits
 uint32_t psk_bands;                             // bitmask of HamBandSetting
 uint16_t psk_maxage_mins;                       // query period, minutes
 uint8_t psk_showdist;                           // show max distances, else count
+uint8_t psk_showpath;                           // show paths, else not
 
 // query urls
 static const char psk_page[] PROGMEM = "/fetchPSKReporter.pl";
@@ -92,6 +93,10 @@ void initPSKState()
         psk_showdist = 0;
         NVWriteUInt8 (NV_PSK_SHOWDIST, psk_showdist);
     }
+    if (!NVReadUInt8 (NV_PSK_SHOWPATH, &psk_showpath)) {
+        psk_showpath = 1;                                       // default on
+        NVWriteUInt8 (NV_PSK_SHOWPATH, psk_showpath);
+    }
 }
 
 /* save NV settings related to PSK
@@ -102,6 +107,7 @@ void savePSKState()
     NVWriteUInt32 (NV_PSK_BANDS, psk_bands);
     NVWriteUInt16 (NV_PSK_MAXAGE, psk_maxage_mins);
     NVWriteUInt8 (NV_PSK_SHOWDIST, psk_showdist);
+    NVWriteUInt8 (NV_PSK_SHOWPATH, psk_showpath);
 }
 
 /* draw a target at the farthest spot in each active band as needed.
@@ -439,6 +445,16 @@ bool checkPSKTouch (const SCoord &s, const SBox &box)
     if (s.y < box.y + PANETITLE_H)
         return (false);
 
+    // handy menu entry indices
+    // N.B. must be in column-major order
+    // N.B. keep in sync!
+    enum {
+        _M_RBN,  _M_SPOT, _M_WHAT, _M_SHOW, _M_PATH, _M_AGE, _M_1HR, _M_160, _M_80, _M_60, _M_40,
+        _M_PSK,  _M_OFDE, _M_CALL, _M_DIST, _M_PON,  _M_15M, _M_6HR, _M_30,  _M_20, _M_17, _M_15,
+        _M_WSPR, _M_BYDE, _M_GRID, _M_CNT,  _M_POFF, _M_30M, _M_24H, _M_12,  _M_10, _M_6,  _M_2,
+        _M_N
+    };
+
     // handy current state
     bool ispsk = (psk_mask & PSKMB_SRCMASK) == PSKMB_PSK;
     bool iswspr = (psk_mask & PSKMB_SRCMASK) == PSKMB_WSPR;
@@ -446,55 +462,62 @@ bool checkPSKTouch (const SCoord &s, const SBox &box)
     bool use_call = (psk_mask & PSKMB_CALL) != 0;
     bool of_de = (psk_mask & PSKMB_OFDE) != 0;
     bool show_dist = psk_showdist != 0;
+    bool show_path = psk_showpath != 0;
 
     // menu
     #define PRI_INDENT 2
     #define SEC_INDENT 12
-    #define MI_N (HAMBAND_N + 18)                                // ham_bands + controls
+    #define MI_N (HAMBAND_N + 21)                                // ham_bands + controls
     MenuItem mitems[MI_N];
+
+    if (MI_N != _M_N)
+        fatalError ("busted live spots menu size: %d != %d", MI_N, _M_N);
 
     // runMenu() expects column-major entries
 
-    mitems[0] = {MENU_1OFN,  isrbn, 1, PRI_INDENT, "RBN", 0};
-    mitems[1] = {MENU_LABEL, false, 0, PRI_INDENT, "Spot:", 0};
-    mitems[2] = {MENU_LABEL, false, 0, PRI_INDENT, "What:", 0};
-    mitems[3] = {MENU_LABEL, false, 0, PRI_INDENT, "Show:", 0};
-    mitems[4] = {MENU_LABEL, false, 5, PRI_INDENT, "Age:", 0};
-    mitems[5] = {MENU_1OFN,  false, 6, 5, "1 hr", 0};
-    mitems[6] = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_160M), 4, SEC_INDENT, findBandName(HAMBAND_160M), 0};
-    mitems[7] = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_80M),  4, SEC_INDENT, findBandName(HAMBAND_80M), 0};
-    mitems[8] = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_60M),  4, SEC_INDENT, findBandName(HAMBAND_60M), 0};
-    mitems[9] = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_40M),  4, SEC_INDENT, findBandName(HAMBAND_40M), 0};
+    mitems[_M_RBN]  = {MENU_1OFN,  isrbn,    1, PRI_INDENT, "RBN", 0};
+    mitems[_M_SPOT] = {MENU_LABEL, false,    0, PRI_INDENT, "Spot:", 0};
+    mitems[_M_WHAT] = {MENU_LABEL, false,    0, PRI_INDENT, "What:", 0};
+    mitems[_M_SHOW] = {MENU_LABEL, false,    0, PRI_INDENT, "Show:", 0};
+    mitems[_M_PATH] = {MENU_LABEL, false,    0, PRI_INDENT, "Path:", 0};
+    mitems[_M_AGE]  = {MENU_LABEL, false,    0, PRI_INDENT, "Age:", 0};
+    mitems[_M_1HR]  = {MENU_1OFN,  false,    6, 5, "1 hr", 0};
+    mitems[_M_160]  = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_160M), 4, SEC_INDENT, findBandName(HAMBAND_160M), 0};
+    mitems[_M_80]   = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_80M),  4, SEC_INDENT, findBandName(HAMBAND_80M), 0};
+    mitems[_M_60]   = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_60M),  4, SEC_INDENT, findBandName(HAMBAND_60M), 0};
+    mitems[_M_40]   = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_40M),  4, SEC_INDENT, findBandName(HAMBAND_40M), 0};
 
-    mitems[10] = {MENU_1OFN, ispsk,     1, PRI_INDENT, "PSK", 0};
-    mitems[11] = {MENU_1OFN, of_de,     2, PRI_INDENT, "of DE", 0};
-    mitems[12] = {MENU_1OFN, use_call,  3, PRI_INDENT, "Call", 0};
-    mitems[13] = {MENU_1OFN, show_dist, 7, PRI_INDENT, "MaxDst", 0};
-    mitems[14] = {MENU_1OFN, false,     6, PRI_INDENT, "15 min", 0};
-    mitems[15] = {MENU_1OFN, false,     6, PRI_INDENT, "6 hrs", 0};
-    mitems[16] = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_30M),  4, SEC_INDENT, findBandName(HAMBAND_30M), 0};
-    mitems[17] = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_20M),  4, SEC_INDENT, findBandName(HAMBAND_20M), 0};
-    mitems[18] = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_17M),  4, SEC_INDENT, findBandName(HAMBAND_17M), 0};
-    mitems[19] = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_15M),  4, SEC_INDENT, findBandName(HAMBAND_15M), 0};
+    mitems[_M_PSK]  = {MENU_1OFN, ispsk,     1, PRI_INDENT, "PSK", 0};
+    mitems[_M_OFDE] = {MENU_1OFN, of_de,     2, PRI_INDENT, "of DE", 0};
+    mitems[_M_CALL] = {MENU_1OFN, use_call,  3, PRI_INDENT, "Call", 0};
+    mitems[_M_DIST] = {MENU_1OFN, show_dist, 7, PRI_INDENT, "MaxDst", 0};
+    mitems[_M_PON]  = {MENU_1OFN, show_path, 8, PRI_INDENT, "On", 0};
+    mitems[_M_15M]  = {MENU_1OFN, false,     6, PRI_INDENT, "15 min", 0};
+    mitems[_M_6HR]  = {MENU_1OFN, false,     6, PRI_INDENT, "6 hrs", 0};
+    mitems[_M_30]   = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_30M),  4, SEC_INDENT, findBandName(HAMBAND_30M), 0};
+    mitems[_M_20]   = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_20M),  4, SEC_INDENT, findBandName(HAMBAND_20M), 0};
+    mitems[_M_17]   = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_17M),  4, SEC_INDENT, findBandName(HAMBAND_17M), 0};
+    mitems[_M_15]   = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_15M),  4, SEC_INDENT, findBandName(HAMBAND_15M), 0};
 
-    mitems[20] = {MENU_1OFN, iswspr,    1, PRI_INDENT, "WSPR", 0};
-    mitems[21] = {MENU_1OFN, !of_de,    2, PRI_INDENT, "by DE", 0};
-    mitems[22] = {MENU_1OFN, !use_call, 3, PRI_INDENT, "Grid", 0};
-    mitems[23] = {MENU_1OFN, !show_dist,7, PRI_INDENT, "Count", 0};
-    mitems[24] = {MENU_1OFN, false,     6, PRI_INDENT, "30 min", 0};
-    mitems[25] = {MENU_1OFN, false,     6, PRI_INDENT, "24 hrs", 0};
-    mitems[26] = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_12M),  4, SEC_INDENT, findBandName(HAMBAND_12M), 0};
-    mitems[27] = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_10M),  4, SEC_INDENT, findBandName(HAMBAND_10M), 0};
-    mitems[28] = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_6M),   4, SEC_INDENT, findBandName(HAMBAND_6M), 0};
-    mitems[29] = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_2M),   4, SEC_INDENT, findBandName(HAMBAND_2M), 0};
+    mitems[_M_WSPR] = {MENU_1OFN, iswspr,    1, PRI_INDENT, "WSPR", 0};
+    mitems[_M_BYDE] = {MENU_1OFN, !of_de,    2, PRI_INDENT, "by DE", 0};
+    mitems[_M_GRID] = {MENU_1OFN, !use_call, 3, PRI_INDENT, "Grid", 0};
+    mitems[_M_CNT]  = {MENU_1OFN, !show_dist,7, PRI_INDENT, "Count", 0};
+    mitems[_M_POFF] = {MENU_1OFN, !show_path,8, PRI_INDENT, "Off", 0};
+    mitems[_M_30M]  = {MENU_1OFN, false,     6, PRI_INDENT, "30 min", 0};
+    mitems[_M_24H]  = {MENU_1OFN, false,     6, PRI_INDENT, "24 hrs", 0};
+    mitems[_M_12]   = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_12M),  4, SEC_INDENT, findBandName(HAMBAND_12M), 0};
+    mitems[_M_10]   = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_10M),  4, SEC_INDENT, findBandName(HAMBAND_10M), 0};
+    mitems[_M_6]    = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_6M),   4, SEC_INDENT, findBandName(HAMBAND_6M), 0};
+    mitems[_M_2]    = {MENU_AL1OFN, TST_PSKBAND(HAMBAND_2M),   4, SEC_INDENT, findBandName(HAMBAND_2M), 0};
 
     // set age
     switch (psk_maxage_mins) {
-    case 15:   mitems[14].set = true; break;
-    case 30:   mitems[24].set = true; break;
-    case 60:   mitems[5].set  = true; break;
-    case 360:  mitems[15].set = true; break;
-    case 1440: mitems[25].set = true; break;
+    case 15:   mitems[_M_15M].set = true; break;
+    case 30:   mitems[_M_30M].set = true; break;
+    case 60:   mitems[_M_1HR].set  = true; break;
+    case 360:  mitems[_M_6HR].set = true; break;
+    case 1440: mitems[_M_24H].set = true; break;
     default:   fatalError ("Bad psk_maxage_mins: %d", psk_maxage_mins);
     }
 
@@ -510,11 +533,11 @@ bool checkPSKTouch (const SCoord &s, const SBox &box)
     if (runMenu (menu)) {
 
         // handy
-        bool psk_set = mitems[10].set;
-        bool wspr_set = mitems[20].set;
-        bool rbn_set = mitems[0].set;
-        bool ofDE_set = mitems[11].set;
-        bool call_set = mitems[12].set;
+        bool psk_set  = mitems[_M_PSK].set;
+        bool wspr_set = mitems[_M_WSPR].set;
+        bool rbn_set  = mitems[_M_RBN].set;
+        bool ofDE_set = mitems[_M_OFDE].set;
+        bool call_set = mitems[_M_CALL].set;
 
         // RBN only works with ofcall
         if (rbn_set && (!ofDE_set || !call_set)) {
@@ -535,35 +558,38 @@ bool checkPSKTouch (const SCoord &s, const SBox &box)
 
             // set new ham_bands
             psk_bands = 0;
-            if (mitems[6].set)  SET_PSKBAND(HAMBAND_160M);
-            if (mitems[7].set)  SET_PSKBAND(HAMBAND_80M);
-            if (mitems[8].set)  SET_PSKBAND(HAMBAND_60M);
-            if (mitems[9].set)  SET_PSKBAND(HAMBAND_40M);
-            if (mitems[16].set) SET_PSKBAND(HAMBAND_30M);
-            if (mitems[17].set) SET_PSKBAND(HAMBAND_20M);
-            if (mitems[18].set) SET_PSKBAND(HAMBAND_17M);
-            if (mitems[19].set) SET_PSKBAND(HAMBAND_15M);
-            if (mitems[26].set) SET_PSKBAND(HAMBAND_12M);
-            if (mitems[27].set) SET_PSKBAND(HAMBAND_10M);
-            if (mitems[28].set) SET_PSKBAND(HAMBAND_6M);
-            if (mitems[29].set) SET_PSKBAND(HAMBAND_2M);
+            if (mitems[_M_160].set) SET_PSKBAND(HAMBAND_160M);
+            if (mitems[_M_80].set)  SET_PSKBAND(HAMBAND_80M);
+            if (mitems[_M_60].set)  SET_PSKBAND(HAMBAND_60M);
+            if (mitems[_M_40].set)  SET_PSKBAND(HAMBAND_40M);
+            if (mitems[_M_30].set)  SET_PSKBAND(HAMBAND_30M);
+            if (mitems[_M_20].set)  SET_PSKBAND(HAMBAND_20M);
+            if (mitems[_M_17].set)  SET_PSKBAND(HAMBAND_17M);
+            if (mitems[_M_15].set)  SET_PSKBAND(HAMBAND_15M);
+            if (mitems[_M_12].set)  SET_PSKBAND(HAMBAND_12M);
+            if (mitems[_M_10].set)  SET_PSKBAND(HAMBAND_10M);
+            if (mitems[_M_6].set)   SET_PSKBAND(HAMBAND_6M);
+            if (mitems[_M_2].set)   SET_PSKBAND(HAMBAND_2M);
 
             // get new age
-            if (mitems[14].set)
+            if (mitems[_M_15M].set)
                 psk_maxage_mins = 15;
-            else if (mitems[24].set)
+            else if (mitems[_M_30M].set)
                 psk_maxage_mins = 30;
-            else if (mitems[5].set)
+            else if (mitems[_M_1HR].set)
                 psk_maxage_mins = 60;
-            else if (mitems[15].set)
+            else if (mitems[_M_6HR].set)
                 psk_maxage_mins = 360;
-            else if (mitems[25].set)
+            else if (mitems[_M_24H].set)
                 psk_maxage_mins = 1440;
             else
                 fatalError ("PSK: No menu age");
 
             // get how to show
-            psk_showdist = mitems[13].set;
+            psk_showdist = mitems[_M_DIST].set;
+
+            // get whether to show paths
+            psk_showpath = mitems[_M_PON].set;
 
             // persist
             savePSKState();
@@ -615,7 +641,8 @@ void drawPSKPaths ()
         // just show the longest path in each band
         for (int i = 0; i < HAMBAND_N; i++) {
             if (bstats[i].maxkm > 0 && TST_PSKBAND(i)) {
-                drawSpotPathOnMap (reports[spot_maxrpt[i]]);
+                if (psk_showpath)
+                    drawSpotPathOnMap (reports[spot_maxrpt[i]]);
                 drawSpotLabelOnMap (reports[spot_maxrpt[i]], lom, LOMD_ALL);
             }
         }
@@ -623,10 +650,12 @@ void drawPSKPaths ()
     } else {
 
         // show all paths first
-        for (int i = 0; i < n_reports; i++) {
-            DXSpot &s = reports[i];
-            if (TST_PSKBAND(findHamBand(s.kHz)))
-                drawSpotPathOnMap (s);
+        if (psk_showpath) {
+            for (int i = 0; i < n_reports; i++) {
+                DXSpot &s = reports[i];
+                if (TST_PSKBAND(findHamBand(s.kHz)))
+                    drawSpotPathOnMap (s);
+            }
         }
 
         // then label all without text

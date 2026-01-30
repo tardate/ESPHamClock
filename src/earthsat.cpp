@@ -3,10 +3,13 @@
  * we call "pass" the overhead view shown in dx_info_b, "path" the orbit shown on the map.
  *
  * N.B. our satellite info server changes blanks to underscores in sat names.
+ * N.B. we always assign sat_state[0] first then sat_state[1] only if want a second sat
  */
 
 
 #include "HamClock.h"
+
+#define MAX_ACTIVE_SATS 2               // increasing this works here but requires more colors
 
 bool dx_info_for_sat;                   // global to indicate whether dx_info_b is for DX info or sat info
 
@@ -18,10 +21,10 @@ bool dx_info_for_sat;                   // global to indicate whether dx_info_b 
 #define N_FOOT          3               // number of footprint altitude loci
 #define ARROW_N         25              // n arrows
 #define ARROW_EVERY     (MAX_PATHPTS/ARROW_N)   // one arrow every these many steps
-#define ARROW_L         (10*tft.SCALESZ)        // arrow length, raw pixels
+#define ARROW_L         15              // arrow length, canonical pixels
 
 
-// config
+// layout
 #define ALARM_DT        (1.0F/1440.0F)  // flash this many days before an event
 #define SATLED_RISING_HZ  1             // flash at this rate when sat about to rise
 #define SATLED_SETTING_HZ 2             // flash at this rate when sat about to set
@@ -31,7 +34,7 @@ bool dx_info_for_sat;                   // global to indicate whether dx_info_b 
 #define TBORDER         50              // top border
 #define FONT_H          (dx_info_b.h/6) // height for SMALL_FONT
 #define FONT_D          5               // font descent
-#define SAT_COLOR       RA8875_RED      // overall annotation color
+#define SAT_COLOR       RA8875_WHITE    // overall annotation color
 #define BTN_COLOR       RA8875_GREEN    // button fill color
 #define SATUP_COLOR     RGB565(0,200,0) // time color when sat is up
 #define SOON_COLOR      RGB565(200,0,0) // table text color for pass soon
@@ -44,7 +47,7 @@ bool dx_info_for_sat;                   // global to indicate whether dx_info_b 
 #define MAX_NSAT        (N_ROWS*N_COLS) // max names we can display
 #define MAX_PASS_STEPS  30              // max lines to draw for pass map
 #define OFFSCRN         20000           // x or y coord that is definitely off screen
-#define MAP_DT_W        (6*7)           // map time width assuming X YY:ZZ, pixels
+static SBox ok_b = {730,10,55,35};      // Ok button
 
 // used so findNextPass() can be used for contexts other than the current sat now
 typedef struct {
@@ -56,7 +59,7 @@ typedef struct {
 
 // handy pass states from findPassState()
 typedef enum {
-    PS_NONE,            // no sat rise/set in play
+    PS_NONE,            // no sat rise/set in play or unknown
     PS_UPSOON,          // pass lies ahead
     PS_UPNOW,           // pass in progress
     PS_HASSET,          // down after being up
@@ -67,27 +70,51 @@ static const char esat_ufn[] = "user-esats.txt";        // name of user's tle fi
 static const char esat_sfn[] = "esats.txt";             // local cached file from server
 static const char esat_url[] = "/esats/esats.txt";      // server file URL
 #define MAX_CACHE_AGE   10000                           // max cache age, seconds
-typedef enum {                                          // used by readNextSat()
+
+// used by readNextSat()
+typedef enum {
     RNS_INIT = 0,                                       // check user's list
     RNS_SERVER,                                         // check backend list
     RNS_DONE                                            // checked both
 } RNS_t;
 
-// state
-static Satellite *sat;                  // satellite definition, if any
-static Observer *obs;                   // DE
-static SatRiseSet sat_rs;               // event info for current sat
-static SCoord *sat_path;                // mallocd screen coords for orbit, first always now, Moon only 1
-static uint16_t n_path;                 // actual number in use
-static SCoord *sat_foot[3];             // mallocd screen coords for each footprint altitude
+// foot configuration
 static const uint16_t max_foot[N_FOOT] = {FOOT_ALT0, FOOT_ALT30, FOOT_ALT60};   // max dots on each altitude 
-static const float foot_alts[N_FOOT] = {0.0F, 30.0F, 60.0F};                    // alt of each segment
-static uint16_t n_foot[N_FOOT];         // actual dots along each altitude 
-static SBox map_name_b;                 // location of sat name on map
-static SBox ok_b = {730,10,55,35};      // Ok button
-static char sat_name[NV_SATNAME_LEN];   // NV_SATNAME cache (spaces are underscores)
-#define SAT_NAME_IS_SET()               (sat_name[0])           // whether there is a sat name defined
-static bool new_pass;                   // set when new pass is ready
+static const float foot_alts[N_FOOT] = {0.0F, 30.0F, 60.0F};                    // alt of each segment, degs
+
+// state
+typedef struct {
+    Satellite *sat;                                     // satellite definition, NULL if inactive
+    SatRiseSet rs;                                      // event info
+    SCoord *path;                                       // full res coords for orbit, [0] always now
+    int n_path;                                         // n in path[]
+    SCoord *foot[N_FOOT];                               // full res coords for each footprint altitude
+    int n_foot[N_FOOT];                                 // n in each foot[]
+    bool show_path;                                     // whether to pass as well as foot
+    SBox name_b;                                        // canonical coords of name on map
+    char name[NV_SATNAME_LEN];                          // name, spaces are underscores
+    NV_Name nv_name;                                    // NV property for persistent name
+    NV_Name nv_color;                                   // NV property for persistent color
+    ColorSelection cs;                                  // path control
+} SatState;
+static SatState sat_state[MAX_ACTIVE_SATS];             // [1].sat is set only if [0].sat is also set
+static bool new_pass;                                   // set when new pass is ready
+
+#define NO_CUR_SAT  (-1)                                // flag for currentSat and dxpaneSat
+
+// index of sat_state to be shown in the DX pane, else NO_CUR_SAT
+static int dxpaneSat = NO_CUR_SAT;
+
+// return whether the given sat_state has a defined name
+static inline bool SAT_NAME_IS_SET (SatState &s) { return s.name[0] != '\0'; }
+
+// number of sat_states in use.
+// N.B we always assign [0] first then [1] only if want a second sat
+static inline int nActiveSats(void) { return sat_state[1].sat ? 2 : (sat_state[0].sat ? 1 : 0); }
+
+// current observer (same for all sats)
+static Observer *obs;                                   // DE
+
 
 #if defined(__GNUC__)
 static void fatalSatError (const char *fmt, ...) __attribute__ ((format (__printf__, 1, 2)));
@@ -116,41 +143,68 @@ static void risetAlarm (int hz)
 }
 
 
-
-/* completely undefine the current sat
+/* return index of sat_state considered "current" by outside systems such as gimbal, or NO_CUR_SAT if none.
+ * N.B. [0] can still be considered current even if none are shown in the DX pane.
  */
-static void unsetSat()
+static int currentSat(void)
 {
-    // reset sat and its path
-    if (sat) {
-        delete sat;
-        sat = NULL;
-    }
-    if (sat_path) {
-        free (sat_path);
-        sat_path = NULL;
-    }
-    for (int i = 0; i < N_FOOT; i++) {
-        if (sat_foot[i]) {
-            free (sat_foot[i]);
-            sat_foot[i] = NULL;
+    if (sat_state[0].sat && dxpaneSat == 0)
+        return 0;
+
+    if (sat_state[1].sat && dxpaneSat == 1)
+        return 1;
+
+    // assign one?
+    if (dxpaneSat == NO_CUR_SAT) {
+        if (sat_state[0].sat) {
+            dxpaneSat = 0;
+            return 0;
+        }
+        if (sat_state[1].sat) {
+            dxpaneSat = 1;
+            return 1;
         }
     }
 
-    // reset name
-    sat_name[0] = '\0';
-    NVWriteString (NV_SATNAME, sat_name);
-    dx_info_for_sat = false;
-
-    risetAlarm (BLINKER_OFF);
+    return (NO_CUR_SAT);
 }
 
-/* fill sat_foot with loci of points that see the sat at various viewing altitudes.
+/* completely undefine and reclaim memory for the given sat
+ */
+static void unsetSat (SatState &s)
+{
+    // reset sat and its path
+    if (s.sat) {
+        delete s.sat;
+        s.sat = NULL;
+    }
+    if (s.path) {
+        free (s.path);
+        s.path = NULL;
+    }
+    for (int i = 0; i < N_FOOT; i++) {
+        if (s.foot[i]) {
+            free (s.foot[i]);
+            s.foot[i] = NULL;
+        }
+    }
+
+    // reset name here and in NV
+    s.name[0] = '\0';
+    NVWriteString (s.nv_name, s.name);
+
+    // no more sat if last one
+    if (nActiveSats() == 0) {
+        dx_info_for_sat = false;
+        risetAlarm (BLINKER_OFF);
+    }
+}
+
+/* fill s.foot with loci of points that see the sat at various viewing altitudes.
  * N.B. call this before updateSatPath malloc's its memory
  */
-static void updateFootPrint (float satlat, float satlng)
+static void updateFootPrint (SatState &s, float satlat, float satlng)
 {
-
     // complement of satlat
     float cosc = sinf(satlat);
     float sinc = cosf(satlat);
@@ -160,18 +214,18 @@ static void updateFootPrint (float satlat, float satlng)
 
         // start with max n points
         int n_malloc = max_foot[alt_i]*sizeof(SCoord);
-        SCoord *foot_path = sat_foot[alt_i] = (SCoord *) realloc (sat_foot[alt_i], n_malloc);
-        if (!foot_path && n_malloc > 0)
-            fatalError ("sat_foot: %d", n_malloc);
+        s.foot[alt_i] = (SCoord *) realloc (s.foot[alt_i], n_malloc);
+        if (!s.foot[alt_i] && n_malloc > 0)
+            fatalError ("no memort for sat foot: %d", n_malloc);
 
         // satellite viewing altitude
         float valt = deg2rad(foot_alts[alt_i]);
 
         // great-circle radius from subsat point to viewing circle at altitude valt
-        float vrad = sat->viewingRadius(valt);
+        float vrad = s.sat->viewingRadius(valt);
 
         // compute each unique point around viewing circle
-        uint16_t n = 0;
+        uint16_t n_foot = 0;
         uint16_t m = max_foot[alt_i];
         for (uint16_t foot_i = 0; foot_i < m; foot_i++) {
 
@@ -181,16 +235,16 @@ static void updateFootPrint (float satlat, float satlng)
             solveSphere (A, vrad, cosc, sinc, &cosa, &B);
             float vlat = M_PIF/2-acosf(cosa);
             float vlng = fmodf(B+satlng+5*M_PIF,2*M_PIF)-M_PIF; // require [-180.180)
-            ll2sRaw (vlat, vlng, foot_path[n], 2);
+            ll2sRaw (vlat, vlng, s.foot[alt_i][n_foot], 2);
 
             // skip duplicate points
-            if (n == 0 || memcmp (&foot_path[n], &foot_path[n-1], sizeof(SCoord)))
-                n++;
+            if (n_foot == 0 || memcmp (&s.foot[alt_i][n_foot], &s.foot[alt_i][n_foot-1], sizeof(SCoord)))
+                n_foot++;
         }
 
         // reduce memory to only points actually used
-        n_foot[alt_i] = n;
-        sat_foot[alt_i] = (SCoord *) realloc (sat_foot[alt_i], n*sizeof(SCoord));
+        s.n_foot[alt_i] = n_foot;
+        s.foot[alt_i] = (SCoord *) realloc (s.foot[alt_i], n_foot*sizeof(SCoord));
         // Serial.printf ("alt %g: n_foot %u / %u\n", foot_alts[alt_i], n, m);
     }
 }
@@ -216,7 +270,7 @@ static DateTime userDateTime(time_t t)
  * also update flags ever_up, set_ok, ever_down and rise_ok.
  * name is only used for local logging, set to NULL to avoid even this.
  */
-static void findNextPass(const char *name, time_t t, SatRiseSet &rs)
+static void findNextPass (Satellite *sat, const char *name, time_t t, SatRiseSet &rs)
 {
     if (!sat || !obs) {
         rs.set_ok = rs.rise_ok = false;
@@ -316,10 +370,10 @@ static void findNextPass(const char *name, time_t t, SatRiseSet &rs)
 
 }
 
-/* display next pass sky dome.
+/* display next pass for sat in sky dome.
  * N.B. we assume findNextPass has been called to fill sat_rs
  */
-static void drawSatSkyDome()
+static void drawSatSkyDome (SatState &s)
 {
     // size and center of screen path
     uint16_t r0 = satpass_c.r;
@@ -330,7 +384,7 @@ static void drawSatSkyDome()
     tft.fillRect (dx_info_b.x+1, dx_info_b.y+2*FONT_H+1, dx_info_b.w-2, dx_info_b.h-2*FONT_H-1, RA8875_BLACK);
 
     // skip if no sat or never up
-    if (!sat || !obs || !sat_rs.ever_up)
+    if (!s.sat || !obs || !s.rs.ever_up)
         return;
 
     // find n steps, step duration and starting time
@@ -339,18 +393,18 @@ static void drawSatSkyDome()
     float step_dt = 0;
     DateTime t;
 
-    if (sat_rs.rise_ok && sat_rs.set_ok) {
+    if (s.rs.rise_ok && s.rs.set_ok) {
 
         // find start and pass duration in days
-        float pass_duration = sat_rs.set_time - sat_rs.rise_time;
+        float pass_duration = s.rs.set_time - s.rs.rise_time;
         if (pass_duration < 0) {
             // rise after set means pass is underway so start now for remaining duration
             DateTime t_now = userDateTime(nowWO());
-            pass_duration = sat_rs.set_time - t_now;
+            pass_duration = s.rs.set_time - t_now;
             t = t_now;
         } else {
             // full pass so start at next rise
-            t = sat_rs.rise_time;
+            t = s.rs.rise_time;
             full_pass = true;
         }
 
@@ -395,7 +449,7 @@ static void drawSatSkyDome()
     tft.setCursor (xc + r0 - 12, yc + r0 - 8);
     tft.print ("SE");
 
-    // connect several points from t until sat_rs.set_time, find max elevation for labeling
+    // connect several points from t until s.rs.set_time, find max elevation for labeling
     float max_el = 0;
     uint16_t max_el_x = 0, max_el_y = 0;
     uint16_t prev_x = 0, prev_y = 0;
@@ -403,8 +457,8 @@ static void drawSatSkyDome()
 
         // find topocentric position @ t
         float el, az, range, rate;
-        sat->predict (t);
-        sat->topo (obs, el, az, range, rate);
+        s.sat->predict (t);
+        s.sat->topo (obs, el, az, range, rate);
         if (el < 0 && n_steps == 1)
             break;                                      // only showing pos now but it's down
 
@@ -457,7 +511,7 @@ static void drawSatSkyDome()
         tft.drawCircle (tft.getCursorX()+2, tft.getCursorY(), 1, BRGRAY);       // simple degree symbol
 
         // pass duration
-        int s_up = (sat_rs.set_time - sat_rs.rise_time)*SECSPERDAY;
+        int s_up = (s.rs.set_time - s.rs.rise_time)*SECSPERDAY;
         char tup_str[32];
         if (s_up >= 3600) {
             int h = s_up/3600;
@@ -478,17 +532,16 @@ static void drawSatSkyDome()
 
 }
 
-/* draw name of current satellite IFF used in dx_info box
+/* draw name of s IFF used in dx_info box
  */
-static void drawSatName()
+static void drawSatName (SatState &s)
 {
-    if (!sat || !obs || !SAT_NAME_IS_SET() || !dx_info_for_sat || SHOWING_PANE_0())
+    if (!s.sat || !obs || !SAT_NAME_IS_SET(s) || !dx_info_for_sat || SHOWING_PANE_0())
         return;
-
 
     // retrieve saved name without '_'
     char user_name[NV_SATNAME_LEN];
-    strncpySubChar (user_name, sat_name, ' ', '_', NV_SATNAME_LEN);
+    strncpySubChar (user_name, s.name, ' ', '_', NV_SATNAME_LEN);
 
     // shorten until fits in satname_b
     selectFontStyle (LIGHT_FONT, SMALL_FONT);
@@ -501,62 +554,21 @@ static void drawSatName()
     tft.print (user_name);
 }
 
-/* set map_name_b with where sat name should go on map
+/* set s.name_b with where sat name should go on map
  */
-static void setSatMapNameLoc()
+static void setSatMapNameLoc (SatState &s)
 {
-    // retrieve saved name without '_'
-    char user_name[NV_SATNAME_LEN];
-    strncpySubChar (user_name, sat_name, ' ', '_', NV_SATNAME_LEN);
+    // set size
+    selectFontStyle (LIGHT_FONT, FAST_FONT);
+    s.name_b.w = getTextWidth(s.name) + 4;
+    s.name_b.h = 11;
 
-    // set size based on longest of sat name or rise/set time
-    selectFontStyle (LIGHT_FONT, SMALL_FONT);
-    map_name_b.w = fmaxf (MAP_DT_W, getTextWidth(user_name));
-    map_name_b.h = FONT_H + 10;
-
-    switch ((MapProjection)map_proj) {
-
-    case MAPP_AZIM1:            // fallthru
-        // easy: just print in upper right
-        map_name_b.x = map_b.x + map_b.w - map_name_b.w - 10;
-        map_name_b.y = map_b.y + 10;
-        break;
-
-    case MAPP_AZIMUTHAL:
-        // easy: just print on top between hemispheres
-        map_name_b.x = map_b.x + (map_b.w - map_name_b.w)/2 ;
-        map_name_b.y = map_b.y + 10;
-        break;
-
-    case MAPP_ROB:              // fallthru
-    case MAPP_MERCATOR: {
-        // try to place somewhere over an ocean and away from sat footprint
-        SCoord sat_xy, name_xy = {0, 0};
-        LatLong sat_ll;
-        sat_xy.x = sat_path[0].x/tft.SCALESZ;
-        sat_xy.y = sat_path[0].y/tft.SCALESZ;
-        s2ll (sat_xy, sat_ll);
-        if (sat_ll.lng_d > -55 && sat_ll.lng_d < 125) {
-            // sat in eastern hemi so put name in s pacific
-            ll2s (deg2rad(-20), deg2rad(-160), name_xy, 0);
-        } else {
-            // sat in western hemi so put symbol in s indian
-            ll2s (deg2rad(-20), deg2rad(50), name_xy, 0);
-        }
-
-        // beware of edges or off screen in case mercator is zoomed
-        if (name_xy.x) {
-            map_name_b.x = CLAMPF (name_xy.x, map_b.x + 10, map_b.x + map_b.w - map_name_b.w - 10);
-            map_name_b.y = name_xy.y;
-        } else
-            map_name_b.x = 0;
-
-        }
-        break;
-
-    default:
-        fatalError ("setSatMapNameLoc() bad map_proj %d", map_proj);
-
+    // try near current location but beware edges, use canonical units
+    s.name_b.x = s.path[0].x/tft.SCALESZ;
+    s.name_b.y = s.path[0].y/tft.SCALESZ;
+    if (s.name_b.x) {
+        s.name_b.x = CLAMPF (s.name_b.x, map_b.x + 10, map_b.x + map_b.w - s.name_b.w - 10);
+        s.name_b.y = CLAMPF (s.name_b.y, map_b.y + 10, map_b.y + map_b.h - s.name_b.h - 10);
     }
 }
 
@@ -581,34 +593,17 @@ static void drawSatPassMarker()
         tft.fillCircle (x, y, SAT_UP_R, SAT_COLOR);
 }
 
-/* show current az el in dx_info_b at the given y.
- * N.B. we assume sat is indeed in play and font is already set
- */
-static void drawSatAzEl (uint16_t y)
-{
-    DateTime t_now = userDateTime(nowWO());
-    float el, az, range, rate;
-    sat->predict (t_now);
-    sat->topo (obs, el, az, range, rate);
-
-    char str[100];
-    snprintf (str, sizeof(str), "Az: %.0f    El: %.0f", az, el);
-    tft.setCursor (dx_info_b.x + (dx_info_b.w - getTextWidth(str))/2, y);
-    tft.printf (str);
-}
-
-
 /* draw event label with time dt and current az/el in the dx_info box unless dt < 0 then just show label.
  * dt is in days: if > 1 hour show HhM else M:S
  */
-static void drawSatTime (bool force, const char *label, uint16_t color, float dt)
+static void drawSatTime (SatState &s, const char *label, uint16_t color, float event_dt, float event_az)
 {
-    if (!sat)
+    if (!s.sat)
         return;
 
     // layout
     const uint16_t fast_h = 10;                                 // spacing for FAST_FONT
-    const uint16_t rs_y = dx_info_b.y+FONT_H + 4;              // below name
+    const uint16_t rs_y = dx_info_b.y+FONT_H + 4;               // below name
     const uint16_t azel_y = rs_y + fast_h;
     const uint16_t age_y = azel_y + fast_h;
 
@@ -618,31 +613,35 @@ static void drawSatTime (bool force, const char *label, uint16_t color, float dt
     tft.setTextColor (color);
 
     // draw
-    if (dt >= 0) {
+    if (event_dt >= 0) {
 
         // fast font
         selectFontStyle (LIGHT_FONT, FAST_FONT);
 
         // format time as HhM else M:S
-        dt *= 24;                                               // dt is now hours
+        event_dt *= 24;                                         // event_dt is now hours
         int a, b;
         char sep;
-        formatSexa (dt, a, sep, b);
+        formatSexa (event_dt, a, sep, b);
 
-        // build label + time
+        // build label + time + az
         char str[100];
-        snprintf (str, sizeof(str), "%s %2d%c%02d", label, a, sep, b);
+        snprintf (str, sizeof(str), "%s %2d%c%02d @ %.0f", label, a, sep, b, event_az);
         uint16_t s_w = getTextWidth(str);
         tft.setCursor (dx_info_b.x + (dx_info_b.w-s_w)/2, rs_y);
         tft.print(str);
 
         // draw az and el
-        drawSatAzEl (azel_y);
+        DateTime t_now = userDateTime(nowWO());
+        float el, az, range, rate;
+        s.sat->predict (t_now);
+        s.sat->topo (obs, el, az, range, rate);
+        snprintf (str, sizeof(str), "Az: %.0f    El: %.0f", az, el);
+        tft.setCursor (dx_info_b.x + (dx_info_b.w - getTextWidth(str))/2, azel_y);
+        tft.printf (str);
 
-        // draw age
-        time_t t = nowWO();
-        DateTime t_now = userDateTime(t);
-        DateTime t_sat = sat->epoch();
+        // draw TLE age
+        DateTime t_sat = s.sat->epoch();
         snprintf (str, sizeof(str), "TLE Age %.1f days", t_now-t_sat);
         uint16_t a_w = getTextWidth(str);
         tft.setCursor (dx_info_b.x + (dx_info_b.w-a_w)/2, age_y);
@@ -726,15 +725,16 @@ static void fatalSatError (const char *fmt, ...)
     };
     (void) waitForUser (ui);
 
-    // restart without sat
-    unsetSat();
+    // restart without sats
+    for (int i = 0; i < MAX_ACTIVE_SATS; i++)
+        unsetSat (sat_state[i]);
     initScreen();
 }
 
 
-/* return whether sat epoch is known to be good at the given time
+/* return whether sat epoch is known to be good at the given time.
  */
-static bool satEpochOk(const char *name, time_t t)
+static bool satEpochOk (Satellite *sat, const char *name, time_t t)
 {
     if (!sat)
         return (false);
@@ -866,21 +866,21 @@ char name[NV_SATNAME_LEN], char t1[TLE_LINEL], char t2[TLE_LINEL])
     return (true);
 }
 
-/* look up sat_name. if found set up sat, else inform user and remove sat altogether.
+/* look up name. if found set up sat, else inform user and remove sat altogether.
  * return whether found it.
  */
-static bool satLookup ()
+static bool satLookup (SatState &s)
 {
-    if (!SAT_NAME_IS_SET())
+    if (!SAT_NAME_IS_SET(s))
         return (false);
 
     if (debugLevel (DEBUG_ESATS, 1))
-        Serial.printf ("SAT: Looking up '%s'\n", sat_name);
+        Serial.printf ("SAT: Looking up '%s'\n", s.name);
 
     // delete then restore if found
-    if (sat) {
-        delete sat;
-        sat = NULL;
+    if (s.sat) {
+        delete s.sat;
+        s.sat = NULL;
     }
 
     // prepare for readNextSat()
@@ -894,7 +894,7 @@ static bool satLookup ()
     bool ok = false;
     char err_msg[100] = "";                     // user default err msg if this stays ""
     while (!ok && readNextSat (rns_fp, rns_state, name, t1, t2)) {
-        if (strcasecmp (name, sat_name) == 0) {
+        if (strcasecmp (name, s.name) == 0) {
             if (!tleHasValidChecksum (t1))
                 snprintf (err_msg, sizeof(err_msg), "Bad checksum for %s TLE line 1", name);
             else if (!tleHasValidChecksum (t2))
@@ -911,32 +911,48 @@ static bool satLookup ()
     // final check
     if (ok) {
         // TLE looks good: define new sat
-        sat = new Satellite (t1, t2);
+        s.sat = new Satellite (t1, t2);
     } else {
         if (err_msg[0])
             fatalSatError ("%s", err_msg);
         else
-            fatalSatError ("%s disappeared", sat_name);
+            fatalSatError ("%s disappeared", s.name);
     }
 
     return (ok);
 }
 
-static void showSelectionBox (const SCoord &c, bool on)
+/* show table selection box marked or not
+ */
+static void showSelectionBox (int r, int c, bool on)
 {
+    const uint16_t x = c*CELL_W;
+    const uint16_t y = TBORDER + r*CELL_H;
+
     uint16_t fill_color = on ? BTN_COLOR : RA8875_BLACK;
-    tft.fillRect (c.x, c.y+(CELL_H-CB_SIZE)/2+3, CB_SIZE, CB_SIZE, fill_color);
-    tft.drawRect (c.x, c.y+(CELL_H-CB_SIZE)/2+3, CB_SIZE, CB_SIZE, RA8875_WHITE);
+    tft.fillRect (x, y+(CELL_H-CB_SIZE)/2+3, CB_SIZE, CB_SIZE, fill_color);
+    tft.drawRect (x, y+(CELL_H-CB_SIZE)/2+3, CB_SIZE, CB_SIZE, RA8875_WHITE);
 }
 
-
-/* show all names and allow op to choose one or none.
- * save selection in sat_name, even if empty for no selection.
- * return whether sat was selected.
+/* return whether one of sat_state[] is the given name
  */
-static bool askSat()
+static bool satNameIsActive (const char *name)
 {
-    #define NO_SAT              (-1)            // cookie when op has chosen not to display a sat
+    for (int i = 0; i < MAX_ACTIVE_SATS; i++) {
+        SatState &s = sat_state[i];
+        if (s.sat && SAT_NAME_IS_SET(s) && strcasecmp (s.name, name) == 0)
+            return (true);
+    }
+    return (false);
+}
+
+/* show all names and allow op to choose up to two.
+ * save selections and return count therein.
+ */
+static int askSat (char selections[MAX_ACTIVE_SATS][NV_SATNAME_LEN])
+{
+    // init count
+    int n_selections = 0;
 
     // entire display is one big menu box
     SBox screen_b;
@@ -944,6 +960,9 @@ static bool askSat()
     screen_b.y = 0;
     screen_b.w = tft.width();
     screen_b.h = tft.height();
+
+    // handy
+    time_t now = nowWO();
 
     // prep for user input (way up here to avoid goto warnings)
     UserInput ui = {
@@ -954,11 +973,6 @@ static bool askSat()
         UF_NOCLOCKS,
         {0, 0}, TT_NONE, '\0', false, false
     };
-
-    // init selected item to none, might be set while drawing the matrix
-    SCoord sel_s = {0, 0};
-    int sel_idx = NO_SAT;
-    int prev_sel_idx = NO_SAT;
 
     // don't inherit anything lingering after the tap that got us here
     drainTouch();
@@ -971,7 +985,7 @@ static bool askSat()
     uint16_t title_y = 3*TBORDER/4;
     selectFontStyle (BOLD_FONT, SMALL_FONT);
     tft.setCursor (5, title_y);
-    tft.print ("Select satellite, or none");
+    tft.print ("Select up to two satellites");
 
     // show rise units
     selectFontStyle (LIGHT_FONT, SMALL_FONT);
@@ -992,29 +1006,37 @@ static bool askSat()
     // show Ok button
     drawStringInBox ("Ok", ok_b, false, RA8875_WHITE);
 
-    // prep storage
-    char t1[TLE_LINEL];
-    char t2[TLE_LINEL];
-    char sat_names[MAX_NSAT][NV_SATNAME_LEN];
 
-    // n sats we display, may be fewer than total possible if tap to stop early
-    int n_sat = 0;
+    // storage for each posible name and n used
+    // N.B. stored alphabetically in column-major order
+    char sat_table[MAX_NSAT][NV_SATNAME_LEN];
+    int n_sat_table;
 
     // prepare for readNextSat()
     FILE *rns_fp = NULL;
     RNS_t rns_state = RNS_INIT;
 
+
+    //*******************************************************************************************
+    // display table, highlighting and adding to selections[] any names already in sat_state[]
+    //*******************************************************************************************
+
     // read up to MAX_NSAT and display each name, allow tapping part way through to stop
     selectFontStyle (LIGHT_FONT, SMALL_FONT);
-    for (n_sat = 0; n_sat < MAX_NSAT; n_sat++) {
+    for (n_sat_table = 0; n_sat_table < MAX_NSAT; n_sat_table++) {
+
+        // handy
+        char *tbl_name = sat_table[n_sat_table];
 
         // read user's file until it's empty, then read from server
-        if (!readNextSat (rns_fp, rns_state, sat_names[n_sat], t1, t2))
+        char t1[TLE_LINEL];
+        char t2[TLE_LINEL];
+        if (!readNextSat (rns_fp, rns_state, tbl_name, t1, t2))
             break;
 
-        // find row and column, col-major order
-        int r = n_sat % N_ROWS;
-        int c = n_sat / N_ROWS;
+        // row and column, col-major order
+        int r = n_sat_table % N_ROWS;
+        int c = n_sat_table / N_ROWS;
 
         // ul corner of this cell
         SCoord cell_s;
@@ -1030,26 +1052,24 @@ static bool askSat()
             break;
         }
 
-        // draw tick box, pre-selected if it's the current sat
-        if (strcasecmp (sat_name, sat_names[n_sat]) == 0) {
-            showSelectionBox (cell_s, true);
-            sel_idx = n_sat;
-            sel_s = cell_s;
-        } else {
-            showSelectionBox (cell_s, false);
-        }
+        // draw tick box, saved and pre-selected if it's one we already have
+        if (satNameIsActive (tbl_name)) {
+            if (n_selections >= MAX_ACTIVE_SATS)
+                fatalError ("bogus build n_selections %d for sat %s", n_selections, tbl_name);
+            strcpy (selections[n_selections++], tbl_name);
+            showSelectionBox (r, c, true);
+        } else
+            showSelectionBox (r, c, false);
 
         // display next rise time of this sat
-        if (sat)
-            delete sat;
-        sat = new Satellite (t1, t2);
+        Satellite *sat = new Satellite (t1, t2);
         tft.setTextColor (RA8875_WHITE);
         tft.setCursor (cell_s.x + CB_SIZE + 8, cell_s.y + FONT_H);
-        if (satEpochOk(sat_names[n_sat], nowWO())) {
+        if (satEpochOk(sat, tbl_name, now)) {
             SatRiseSet rs;
-            findNextPass(sat_names[n_sat], nowWO(), rs);
+            findNextPass (sat, tbl_name, now, rs);
             if (rs.rise_ok) {
-                DateTime t_now = userDateTime(nowWO());
+                DateTime t_now = userDateTime(now);
                 if (rs.rise_time < rs.set_time) {
                     // pass lies ahead
                     float hrs_to_rise = (rs.rise_time - t_now)*24.0;
@@ -1083,17 +1103,25 @@ static bool askSat()
             tft.print ("Age ");
         }
 
+        // recycle sat
+        delete sat;
+
         // followed by scrubbed name
         char user_name[NV_SATNAME_LEN];
-        strncpySubChar (user_name, sat_names[n_sat], ' ', '_', NV_SATNAME_LEN);
+        strncpySubChar (user_name, tbl_name, ' ', '_', NV_SATNAME_LEN);
         tft.print (user_name);
     }
 
     // bale if no satellites displayed
-    if (n_sat == 0)
+    if (n_sat_table == 0)
         goto out;
 
-    // follow touches to make selection
+
+    //**************************************************************************************************
+    // operate table by taps, updating selections[] which already contain active sat_state names, if any
+    //**************************************************************************************************
+
+    // follow input to make selections
     selectFontStyle (BOLD_FONT, SMALL_FONT);
     while (waitForUser (ui)) {
 
@@ -1101,166 +1129,157 @@ static bool askSat()
         if (ui.kb_char == CHAR_CR || ui.kb_char == CHAR_NL || ui.kb_char == CHAR_ESC || inBox (ui.tap, ok_b)){
             // show Ok button highlighted
             drawStringInBox ("Ok", ok_b, true, RA8875_WHITE);
+            wdDelay(200);
             goto out;
         }
 
-        // handle a typed direction key
-        if (ui.kb_char) {
-            if (sel_idx != NO_SAT) {
-                // act wrt current selection
-                ui.tap = sel_s;
-                switch (ui.kb_char) {
-                case 'h': ui.tap.x -= CELL_W; break;
-                case 'j': ui.tap.y += CELL_H; break;
-                case 'k': ui.tap.y -= CELL_H; break;
-                case 'l': ui.tap.x += CELL_W; break;
-                case ' ': break;        // toggle this entry
-                default:  continue;     // ignore
-                }
-            } else if (prev_sel_idx != NO_SAT) {
-                // nothing selected now but there was a previous selection
-                ui.tap.x = (prev_sel_idx / N_ROWS) * CELL_W;
-                ui.tap.y = TBORDER + (prev_sel_idx % N_ROWS) * CELL_H;
-            } else {
-                // first time and nothing selected, start in first cell
-                ui.tap.x = 0;
-                ui.tap.y = TBORDER;
-            }
-        }
-
-        // ignore if outside or beyond the matrix
-        int r = (ui.tap.y - TBORDER)/CELL_H;
-        int c = ui.tap.x/CELL_W;
-        int tap_idx = c*N_ROWS + r;             // column major order
-        if (r < 0 || r >= N_ROWS || c < 0 || c >= N_COLS || tap_idx < 0 || tap_idx >= n_sat)
+        // skip if any other char -- we only support tap control
+        if (ui.kb_char != CHAR_NONE)
             continue;
 
-        // normalize the tap location to upper left of cell
-        ui.tap.x = c*CELL_W;
-        ui.tap.y = TBORDER + r*CELL_H;
+        // find table index at tap
+        int r = (ui.tap.y - TBORDER)/CELL_H;
+        int c = ui.tap.x/CELL_W;
+        int tbl_idx = c*N_ROWS + r;                     // column-major order
+        if (r < 0 || r >= N_ROWS || c < 0 || c >= N_COLS || tbl_idx < 0 || tbl_idx >= n_sat_table)
+            continue;
 
-        // update tapped cell
-        if (tap_idx == sel_idx) {
-            // already on: toggle off and forget
-            showSelectionBox (ui.tap, false);
-            prev_sel_idx = sel_idx;
-            sel_idx = NO_SAT;
-        } else {
-            // toggle previous selection off (if any) and show new selection
-            if (sel_idx != NO_SAT)
-                showSelectionBox (sel_s, false);
-            prev_sel_idx = sel_idx;
-            sel_idx = tap_idx;
-            sel_s = ui.tap;
-            showSelectionBox (sel_s, true);
-        }
+        // update tapped cell, maintaining rule that selections[1] is used only if [0] also used
+        const char *tbl_name = sat_table[tbl_idx];
+        if (n_selections == 0) {
+            // first selection
+            strcpy (selections[n_selections++], tbl_name);
+            showSelectionBox (r, c, true);
+        } else if (n_selections == 1) {
+            if (strcmp (tbl_name, selections[0]) == 0) {
+                // remove from selections[0] and toggle off
+                n_selections = 0;
+                showSelectionBox (r, c, false);
+            } else {
+                // add to selections[] and toggle on
+                strcpy (selections[n_selections++], tbl_name);
+                showSelectionBox (r, c, true);
+            }
+        } else if (n_selections == 2) {
+            if (strcmp (tbl_name, selections[0]) == 0) {
+                // tapped [0] so remove by copying from [1] and toggle off
+                strcpy (selections[0], selections[1]);
+                n_selections = 1;
+                showSelectionBox (r, c, false);
+            } else if (strcmp (tbl_name, selections[1]) == 0) {
+                // tapped [1] so just drop count and toggle off
+                n_selections = 1;
+                showSelectionBox (r, c, false);
+            }
+        } else
+            fatalError ("bogus use n_selections %d for sat %s", n_selections, tbl_name);
+
     }
 
   out:
 
-    // one final close in case we didn't read all
+    // one final fclose in case we didn't read all
     if (rns_fp)
         fclose (rns_fp);
 
-    if (n_sat == 0) {
+    if (n_sat_table == 0) {
         fatalSatError ("%s", "No satellites found");
         return (false);
     }
 
-    // set sat_name and whether any selected
-    if (sel_idx != NO_SAT) {
-        strcpy (sat_name, sat_names[sel_idx]);
-        return (true);
-    } else {
-        unsetSat();
-        return (false);
-    }
+    return (n_selections);
 }
 
-/* use sat_rs to catagorize the state of a pass.
- * if optional days also return timing info:
- *   if return PS_NONE then days is not modified
- *   if return PS_UPSOON then days is days until rise;
- *   if return PS_UPNOW then days is days until set
- *   if return PS_HASSET then days is days since set
- * N.B. requires sat_rs already computed
+/* use rs to catagorize the state of a pass.
+ * if optional days and az are provided these also return timing info:
+ *   if return PS_NONE then values are not modified
+ *   if return PS_UPSOON then days is days until rise, az is rise
+ *   if return PS_UPNOW then days is days until set, az is set
+ *   if return PS_HASSET then days is days since set, az is unused
  */
-static PassState findPassState (float *days)
+static PassState findPassState (SatRiseSet &rs, float *days, float *az)
 {
     PassState ps;
 
     DateTime t_now = userDateTime(nowWO());
 
-    if (!sat_rs.ever_up || !sat_rs.ever_down) {
+    if (!rs.ever_up || !rs.ever_down) {
 
         ps = PS_NONE;
 
-    } else if (sat_rs.rise_time < sat_rs.set_time) {
+    } else if (rs.rise_time < rs.set_time) {
 
-        if (t_now < sat_rs.rise_time) {
+        if (t_now < rs.rise_time) {
             // pass lies ahead
             ps = PS_UPSOON;
-            if (days)
-                *days = sat_rs.rise_time - t_now;
-        } else if (t_now < sat_rs.set_time) {
+            if (days && az) {
+                *days = rs.rise_time - t_now;
+                *az = rs.rise_az;
+            }
+        } else if (t_now < rs.set_time) {
             // pass in progress
             ps = PS_UPNOW;
-            if (days)
-                *days = sat_rs.set_time - t_now;
+            if (days && az) {
+                *days = rs.set_time - t_now;
+                *az = rs.set_az;
+            }
         } else {
             // just set
             ps = PS_HASSET;
             if (days)
-                *days = t_now - sat_rs.set_time;
+                *days = t_now - rs.set_time;
         }
 
     } else {
 
-        if (t_now < sat_rs.set_time) {
+        if (t_now < rs.set_time) {
             // pass in progress
             ps = PS_UPNOW;
-            if (days)
-                *days = sat_rs.set_time - t_now;
+            if (days && az) {
+                *days = rs.set_time - t_now;
+                *az = rs.set_az;
+            }
         } else {
             // just set
             ps = PS_HASSET;
             if (days)
-                *days = t_now - sat_rs.set_time;
+                *days = t_now - rs.set_time;
         }
     }
 
     return (ps);
 }
 
-/* called often to keep sat and sat_rs updated, including creating sat if a name is known.
- * return whether ok to use and, if so, whether elements or sat_rs were updated if care.
+/* called often to keep s.sat and s.rs updated, including creating s.sat if a s.name is known.
+ * return whether ok to use and, if so, whether elements or s.rs were also updated (if care).
  */
-static bool checkSatUpToDate (bool *updated)
+static bool checkSatUpToDate (SatState &s, bool *updated)
 {
-    // bale fast if no obs or no sat defined at all
-    if (!obs || !SAT_NAME_IS_SET())
+    // bale fast if no obs or not even a name
+    if (!obs || !SAT_NAME_IS_SET(s))
         return (false);
 
     // do fresh lookup in case local file changed but first capture current epoch to check if updated
-    DateTime e0_dt = sat ? sat->epoch() : DateTime();
-    if (!satLookup())
+    // (don't worry, sat files are heavily cached locally)
+    DateTime e0_dt = s.sat ? s.sat->epoch() : DateTime();
+    if (!satLookup(s))
         return (false);                         // already posted error
 
     // confirm age still ok
     time_t now_wo = nowWO();
-    if (!satEpochOk(sat_name, now_wo)) {
-        fatalSatError ("Epoch for %s is out of date", sat_name);
+    if (!satEpochOk (s.sat, s.name, now_wo)) {
+        fatalSatError ("Epoch for %s is out of date", s.name);
         return (false);
     }
 
     // check if epoch changed
-    DateTime e1_dt = sat->epoch();
+    DateTime e1_dt = s.sat->epoch();
     float e_diff = e1_dt - e0_dt;
     bool new_epoch = e_diff != 0;
 
-    // update sat_rs if new epoch or just set
-    if (new_epoch || findPassState(NULL) == PS_HASSET) {
-        findNextPass (sat_name, now_wo, sat_rs);
+    // update rs too if new epoch or just set
+    if (new_epoch || findPassState(s.rs, NULL, NULL) == PS_HASSET) {
+        findNextPass (s.sat, s.name, now_wo, s.rs);
         if (updated)
             *updated = true;
     } else {
@@ -1274,33 +1293,33 @@ static bool checkSatUpToDate (bool *updated)
 
 /* show pass time of sat_rs(void)
  */
-static void drawSatRSEvents(bool force)
+static void drawSatRSEvents(SatState &s)
 {
     if (SHOWING_PANE_0())
         return;
 
-    float days;
+    float days, az;
 
-    switch (findPassState(&days)) {
+    switch (findPassState (s.rs, &days, &az)) {
 
     case PS_NONE:
         // neither
-        if (!sat_rs.ever_up)
-            drawSatTime (true, "No rise", SAT_COLOR, -1);
-        else if (!sat_rs.ever_down)
-            drawSatTime (true, "No set", SAT_COLOR, -1);
+        if (!s.rs.ever_up)
+            drawSatTime (s, "No rise", SAT_COLOR, -1, 0);
+        else if (!s.rs.ever_down)
+            drawSatTime (s, "No set", SAT_COLOR, -1, 0);
         else
             fatalError ("Bug! no rise/set from PS_NONE");
         break;
 
     case PS_UPSOON:
         // pass lies ahead
-        drawSatTime (force, "Rise in", SAT_COLOR, days);
+        drawSatTime (s, "Rise in", SAT_COLOR, days, az);
         break;
 
     case PS_UPNOW:
         // pass in progress
-        drawSatTime (force, "Set in", SAT_COLOR, days);
+        drawSatTime (s, "Set in", SAT_COLOR, days, az);
         drawSatPassMarker();
         break;
 
@@ -1314,9 +1333,15 @@ static void drawSatRSEvents(bool force)
  */
 static void checkLEDAlarmEvents()
 {
-    float days;
+    // get current sat
+    int cs = currentSat();
+    if (!obs || cs == NO_CUR_SAT)
+        return;
+    SatState &s = sat_state[cs];
 
-    switch (findPassState(&days)) {
+    float days, az;
+
+    switch (findPassState (s.rs, &days, &az)) {
 
     case PS_NONE:
         // no pass: turn off
@@ -1340,20 +1365,34 @@ static void checkLEDAlarmEvents()
     }
 }
 
-/* set new satellite observer location to de_ll and time to user's offset
+/* set new satellite observer location to de_ll and update all sat info to current time and loc.
+ * return whether ready to go.
  */
-bool setNewSatCircumstance()
+bool setNewSatCircumstance (void)
 {
+    // update obs, used by both sats
     if (obs)
         delete obs;
     obs = new Observer (de_ll.lat_d, de_ll.lng_d, 0);
-    bool updated = false;
-    bool ok = checkSatUpToDate (&updated);
-    if (!ok)
-        unsetSat();
-    else if (!updated)
-        findNextPass(sat_name, nowWO(), sat_rs);
-    return (ok);
+
+    // update each active sat
+    int n_ok = 0;
+    for (int i = 0; i < MAX_ACTIVE_SATS; i++) {
+        SatState &s = sat_state[i];
+        if (s.sat) {
+            bool updated = false;
+            bool ok = checkSatUpToDate (s, &updated);
+            if (!ok)
+                unsetSat(s);
+            else {
+                n_ok++;
+                if (!updated)
+                    findNextPass (s.sat, s.name, nowWO(), s.rs);
+            }
+        }
+    }
+
+    return (n_ok > 0);
 }
 
 /* handy getSatCir() for right now
@@ -1373,42 +1412,73 @@ bool getSatNow (SatNow &satnow)
  */
 bool getSatCir (Observer *snow_obs, time_t t0, SatNow &sat_at_t0)
 {
-    // get out fast if nothing to do or no info
-    if (!snow_obs || !sat || !SAT_NAME_IS_SET())
+    // get current sat, if any
+    int cs = currentSat();
+    if (!obs || cs == NO_CUR_SAT)
         return (false);
+    SatState &s = sat_state[cs];
 
     // public name
-    strncpySubChar (sat_at_t0.name, sat_name, ' ', '_', NV_SATNAME_LEN);
+    strncpySubChar (sat_at_t0.name, s.name, ' ', '_', NV_SATNAME_LEN);
 
     // compute location now
     DateTime t_now = userDateTime(t0);
-    sat->predict (t_now);
-    sat->topo (snow_obs, sat_at_t0.el, sat_at_t0.az, sat_at_t0.range, sat_at_t0.rate);
+    s.sat->predict (t_now);
+    s.sat->topo (snow_obs, sat_at_t0.el, sat_at_t0.az, sat_at_t0.range, sat_at_t0.rate);
 
     // horizon info, if available
-    sat_at_t0.raz = sat_rs.rise_ok ? sat_rs.rise_az : SAT_NOAZ;
-    sat_at_t0.saz = sat_rs.set_ok  ? sat_rs.set_az  : SAT_NOAZ;
+    sat_at_t0.raz = s.rs.rise_ok ? s.rs.rise_az : SAT_NOAZ;
+    sat_at_t0.saz = s.rs.set_ok  ? s.rs.set_az  : SAT_NOAZ;
 
     // times
-    if (sat_rs.rise_ok)
-        sat_at_t0.rdt = (sat_rs.rise_time - t_now)*24;
-    if (sat_rs.set_ok)
-        sat_at_t0.sdt = (sat_rs.set_time - t_now)*24;
+    if (s.rs.rise_ok)
+        sat_at_t0.rdt = (s.rs.rise_time - t_now)*24;
+    if (s.rs.set_ok)
+        sat_at_t0.sdt = (s.rs.set_time - t_now)*24;
 
     // ok
     return (true);
 }
 
-/* called by main loop() to update _pass_ info so get out fast if nothing to do.
+/* display full sat pass unless !dx_info_for_sat
+ */
+static void drawSatPass (SatState &s)
+{
+    if (!obs || !dx_info_for_sat || SHOWING_PANE_0())
+        return;
+
+    // erase outside the box
+    tft.fillRect (dx_info_b.x-1, dx_info_b.y-1, dx_info_b.w+2, dx_info_b.h+2, RA8875_BLACK);
+    tft.drawRect (dx_info_b.x-1, dx_info_b.y-1, dx_info_b.w+2, dx_info_b.h+2, GRAY);
+
+    drawSatName(s);
+    drawSatRSEvents(s);
+    drawSatSkyDome(s);
+}
+
+/* public version that shows the "current" satellite
+ */
+void drawSatPass (void)
+{
+    // get current sat
+    int cs = currentSat();
+    if (cs == NO_CUR_SAT)
+        return;
+    drawSatPass (sat_state[cs]);
+}
+
+/* called by main loop() to update _pass_ info for current sat, get out fast if nothing to do.
  * the _path_ is updated much less often in updateSatPath().
  * N.B. beware this is called by loop() while stopwatch is up
- * N.B. update sat_rs if !dx_info_for_sat so drawSatPath can draw rise/set time in map_name_b
+ * N.B. update rs even if !dx_info_for_sat so drawSatPath can draw rise/set time in name_b
  */
 void updateSatPass()
 {
-    // get out fast if nothing for us
-    if (!obs || !SAT_NAME_IS_SET())
+    // get current sat
+    int cs = currentSat();
+    if (!obs || cs == NO_CUR_SAT)
         return;
+    SatState &s = sat_state[cs];
 
     // always operate the LED at full rate
     checkLEDAlarmEvents();
@@ -1420,246 +1490,242 @@ void updateSatPass()
 
     // done if can't even get the basics
     bool fresh_update;
-    if (!checkSatUpToDate(&fresh_update))
+    if (!checkSatUpToDate (s, &fresh_update))
         return;
 
     // do minimal display update if showing
     if (dx_info_for_sat && mainpage_up) {
         if (fresh_update) 
-            drawSatPass();              // full display update
+            drawSatPass(s);             // full display update
         else
-            drawSatRSEvents(false);     // just update time and az/el
+            drawSatRSEvents(s);         // just refesh times
     }
 }
 
-/* compute satellite geocentric _path_ into sat_path[] and footprint into sat_foot[].
+/* compute satellite geocentric _path_ into path[] and footprint into s.foot[].
  * called once at the top of each map sweep.
  * the _pass_ is updated in updateSatPass().
- * we also move map_name_b if necessary to avoid the current sat location.
  */
 void updateSatPath()
 {
     // N.B. do NOT call checkSatUpToDate() here -- it can cause updateSatPass() to miss PS_HASSET
 
-    // bale fast if no sat defined at all
-    if (!sat || !obs || !SAT_NAME_IS_SET())
-        return;
+    for (int i = 0; i < MAX_ACTIVE_SATS; i++) {
 
+        SatState &s = sat_state[i];
 
-    // from here we have a valid sat to report
+        // ski if not defined
+        if (!s.sat || !obs || !SAT_NAME_IS_SET(s))
+            continue;
 
-    // free sat_path first since it was last to be malloced
-    if (sat_path) {
-        free (sat_path);
-        sat_path = NULL;
-    }
+        // from here we have a valid sat to report
 
-    // fill sat_foot
-    time_t t_wo = nowWO();
-    DateTime t = userDateTime(t_wo);
-    float satlat, satlng;
-    sat->predict (t);
-    sat->geo (satlat, satlng);
-    if (debugLevel (DEBUG_ESATS, 2))
-        Serial.printf ("SAT: JD %.6f Lat %7.3f Lng %8.3f\n", t_wo/86400.0+2440587.5,
-                                                    rad2deg(satlat), rad2deg(satlng));
-    updateFootPrint(satlat, satlng);
-    updateClocks(false);
-
-    // start sat_path max size, then reduce when know size needed
-    sat_path = (SCoord *) malloc (MAX_PATHPTS * sizeof(SCoord));
-    if (!sat_path)
-        fatalError ("No memory for satellite path");
-
-    // decide line width, if used
-    int lw = getRawPathWidth(SATPATH_CSPR);
-
-    // fill sat_path
-    float period = sat->period();
-    n_path = 0;
-    uint16_t max_path = isSatMoon() ? 1 : MAX_PATHPTS;             // N.B. only set the current location if Moon
-    int dashed = 0;
-    for (uint16_t p = 0; p < max_path; p++) {
-
-        // place dashed line points off screen courtesy overMap()
-        if (getPathDashed(SATPATH_CSPR) && (dashed++ & (MAX_PATHPTS>>5))) {   // first always on for center dot
-            sat_path[n_path] = {OFFSCRN, OFFSCRN};
-        } else {
-            // compute next point along path
-            ll2sRaw (satlat, satlng, sat_path[n_path], 2*lw);   // allow for end dot
+        // free s.path first since it was last to be malloced
+        if (s.path) {
+            free (s.path);
+            s.path = NULL;
         }
 
-        // skip duplicate points
-        if (n_path == 0 || memcmp (&sat_path[n_path], &sat_path[n_path-1], sizeof(SCoord)))
-            n_path++;
+        // fill s.foot
+        time_t t_wo = nowWO();
+        DateTime t = userDateTime(t_wo);
+        float satlat, satlng;
+        s.sat->predict (t);
+        s.sat->geo (satlat, satlng);
+        if (debugLevel (DEBUG_ESATS, 2))
+            Serial.printf ("SAT: JD %.6f Lat %7.3f Lng %8.3f\n", t_wo/86400.0+2440587.5,
+                                                        rad2deg(satlat), rad2deg(satlng));
+        updateFootPrint (s, satlat, satlng);
+        updateClocks(false);
 
-        t += period/max_path;   // show 1 rev
-        sat->predict (t);
-        sat->geo (satlat, satlng);
+        // start s.path max size, then reduce when know size needed
+        s.path = (SCoord *) malloc (MAX_PATHPTS * sizeof(SCoord));
+        if (!s.path)
+            fatalError ("No memory for satellite path");
+
+        // decide line width, if used
+        int lw = getRawPathWidth(s.cs);
+
+        // fill s.path
+        float period = s.sat->period();
+        s.n_path = 0;
+
+        // moon is just the current location
+        uint16_t max_path = !strcasecmp (s.name, "Moon") ? 1 : MAX_PATHPTS;
+
+        int dashed = 0;
+        for (uint16_t p = 0; p < max_path; p++) {
+
+            // place dashed line points off screen courtesy overMap()
+            if (getPathDashed(s.cs) && (dashed++ & (MAX_PATHPTS>>5))) {   // first always on for center dot
+                s.path[s.n_path] = {OFFSCRN, OFFSCRN};
+            } else {
+                // compute next point along path
+                ll2sRaw (satlat, satlng, s.path[s.n_path], 2*lw);   // allow for end dot
+            }
+
+            // skip duplicate points
+            if (s.n_path == 0 || memcmp (&s.path[s.n_path], &s.path[s.n_path-1], sizeof(SCoord)))
+                s.n_path++;
+
+            t += period/max_path;   // show 1 rev
+            s.sat->predict (t);
+            s.sat->geo (satlat, satlng);
+        }
+
+        updateClocks(false);
+        // Serial.printf ("%s n_path %u / %u\n", s.name, s.n_path, MAX_PATHPTS);
+
+        // reduce memory to only points actually used
+        s.path = (SCoord *) realloc (s.path, s.n_path * sizeof(SCoord));
+
+        // set map name location
+        setSatMapNameLoc(s);
     }
-
-    updateClocks(false);
-    // Serial.printf ("n_path %u / %u\n", n_path, MAX_PATHPTS);
-
-    // reduce memory to only points actually used
-    sat_path = (SCoord *) realloc (sat_path, n_path * sizeof(SCoord));
-
-    // set map name to avoid current location
-    setSatMapNameLoc();
 }
 
-/* draw the entire sat path and footprint, connecting points with lines.
+/* draw the entire sat paths and footprints, connecting points with lines.
  */
 void drawSatPathAndFoot()
 {
-    if (!sat)
-        return;
+    for (int i = 0; i < MAX_ACTIVE_SATS; i++) {
 
-    // draw path if on with arrows
-    int pw = getRawPathWidth(SATPATH_CSPR);
-    if (pw) {
-        const float cos_30 = 0.866F;
-        const float sin_30 = 0.500F;
-        const bool dashed = getPathDashed(SATPATH_CSPR);
-        uint16_t pc = getMapColor(SATPATH_CSPR);
-        int prev_vis_i = 0;                             // last i drawn in this segment
-        int last_vis_i;                                 // very last sat_path i that is visible
-        bool prev_vis = true;                           // whether previous point was visible
-        for (last_vis_i = n_path-1; sat_path[last_vis_i].x == OFFSCRN; --last_vis_i )
+        SatState &s = sat_state[i];
+        if (!s.sat)
             continue;
-        for (int i = 1; i < n_path; i++) {
-            SCoord &sp0 = sat_path[i-1];
-            SCoord &sp1 = sat_path[i];
-            if (segmentSpanOkRaw(sp0, sp1, 2*pw)) {
-                if (i == 1) {
-                    // first coord is always the current location, show only if visible
-                    // N.B. set ll2s edge to accommodate this dot
-                    tft.fillCircleRaw (sp0.x, sp0.y, 2*pw, pc);
-                    tft.drawCircleRaw (sp0.x, sp0.y, 2*pw, RA8875_BLACK);
-                }
-                tft.drawLineRaw (sp0.x, sp0.y, sp1.x, sp1.y, pw, pc);
 
-                // directional arrow flares back 30 degs from sp1 or last point drawn if dashed
-                if (i == last_vis_i || 
-                                ((dashed && !prev_vis) || (!dashed && (i % ARROW_EVERY) == 0))) {
-                    int tip_i = dashed && !prev_vis ? prev_vis_i : i;           // tip index
-                    SCoord &arrow_tip = sat_path[tip_i];                        // tip point
-                    SCoord &arrow_flare = sat_path[tip_i - ARROW_EVERY/2];      // flare point halfway back
-                    if (segmentSpanOkRaw(arrow_tip, arrow_flare, 2*pw)) {
-                        int path_dx = (int)arrow_flare.x - (int)arrow_tip.x;        // dx tip to flare
-                        int path_dy = (int)arrow_flare.y - (int)arrow_tip.y;        // dy tip to flare
-                        float path_len = hypotf (path_dx, path_dy);
-                        float arrow_dx = path_dx * ARROW_L / path_len;
-                        float arrow_dy = path_dy * ARROW_L / path_len;
-                        float ccw_dx =  arrow_dx * cos_30 - arrow_dy * sin_30;
-                        float ccw_dy =  arrow_dx * sin_30 + arrow_dy * cos_30;
-                        float cw_dx  =  arrow_dx * cos_30 + arrow_dy * sin_30;
-                        float cw_dy  = -arrow_dx * sin_30 + arrow_dy * cos_30;
-                        SCoord ccw, cw;
-                        ccw.x =  roundf (arrow_tip.x + ccw_dx/2);
-                        ccw.y =  roundf (arrow_tip.y + ccw_dy/2);
-                        cw.x  =  roundf (arrow_tip.x + cw_dx/2);
-                        cw.y  =  roundf (arrow_tip.y + cw_dy/2);
-                        if (segmentSpanOkRaw(arrow_tip, ccw, 2*pw) && segmentSpanOkRaw(arrow_tip, cw, 2*pw)) {
-                            tft.drawLineRaw (arrow_tip.x, arrow_tip.y, ccw.x, ccw.y, 0, pc);
-                            tft.drawLineRaw (arrow_tip.x, arrow_tip.y, cw.x, cw.y, 0, pc);
+        // draw path if on with arrows
+        int pw = getRawPathWidth(s.cs);
+        if (s.show_path && pw) {
+            static const float cos_20 = 0.940F;
+            static const float sin_20 = 0.342F;
+            const bool dashed = getPathDashed(s.cs);
+            uint16_t pc = getMapColor(s.cs);
+            int prev_vis_i = 0;                             // last i drawn in this segment
+            int last_vis_i;                                 // very last path i that is visible
+            bool prev_vis = true;                           // whether previous point was visible
+            for (last_vis_i = s.n_path-1; s.path[last_vis_i].x == OFFSCRN; --last_vis_i )
+                continue;
+            for (int i = 1; i < s.n_path; i++) {
+                SCoord &sp0 = s.path[i-1];
+                SCoord &sp1 = s.path[i];
+                if (segmentSpanOkRaw(sp0, sp1, 2*pw)) {
+                    if (i == 1) {
+                        // first coord is always the current location, show only if visible
+                        // N.B. set ll2s edge to accommodate this dot
+                        tft.fillCircleRaw (sp0.x, sp0.y, 2*pw, pc);
+                        tft.drawCircleRaw (sp0.x, sp0.y, 2*pw, RA8875_BLACK);
+                    }
+
+                    // shouldn't matter but this aligns with arrows better than sp0.sp1
+                    tft.drawLineRaw (sp1.x, sp1.y, sp0.x, sp0.y, pw, pc);
+
+                    // directional arrow flares out 20 degs from sp1 or last point drawn if dashed
+                    if (i == last_vis_i || 
+                                    ((dashed && !prev_vis) || (!dashed && (i % ARROW_EVERY) == 0))) {
+                        int tip_i = dashed && !prev_vis ? prev_vis_i : i;         // tip index
+                        SCoord &arrow_tip = s.path[tip_i];                        // tip point
+                        SCoord &arrow_flare = s.path[tip_i - ARROW_EVERY/2];      // flare point halfway back
+                        if (segmentSpanOkRaw(arrow_tip, arrow_flare, 2*pw)) {
+                            int path_dx = (int)arrow_flare.x - (int)arrow_tip.x;  // dx tip to flare
+                            int path_dy = (int)arrow_flare.y - (int)arrow_tip.y;  // dy tip to flare
+                            float path_len = hypotf (path_dx, path_dy);
+                            float arrow_dx = path_dx * ARROW_L * pw / path_len;
+                            float arrow_dy = path_dy * ARROW_L * pw / path_len;
+                            float ccw_dx =  arrow_dx * cos_20 - arrow_dy * sin_20;
+                            float ccw_dy =  arrow_dx * sin_20 + arrow_dy * cos_20;
+                            float cw_dx  =  arrow_dx * cos_20 + arrow_dy * sin_20;
+                            float cw_dy  = -arrow_dx * sin_20 + arrow_dy * cos_20;
+                            SCoord ccw, cw;
+                            ccw.x =  roundf (arrow_tip.x + ccw_dx/2);
+                            ccw.y =  roundf (arrow_tip.y + ccw_dy/2);
+                            cw.x  =  roundf (arrow_tip.x + cw_dx/2);
+                            cw.y  =  roundf (arrow_tip.y + cw_dy/2);
+                            if (segmentSpanOkRaw(arrow_tip, ccw, 2*pw) && segmentSpanOkRaw(arrow_tip, cw, 2*pw))
+                                tft.fillTriangleRaw (arrow_tip.x, arrow_tip.y, ccw.x, ccw.y, cw.x, cw.y, pc);
                         }
                     }
-                }
 
-                // update state for dashed arrows
-                prev_vis_i = i;
-                prev_vis = true;
+                    // update state for dashed arrows
+                    prev_vis_i = i;
+                    prev_vis = true;
 
-            } else
-                prev_vis = false;
+                } else
+                    prev_vis = false;
+            }
         }
-    }
 
-    // draw foots
-    int fw = getRawPathWidth(SATFOOT_CSPR);
-    if (fw) {
-        uint16_t fc = getMapColor(SATFOOT_CSPR);
-        for (int alt_i = 0; alt_i < N_FOOT; alt_i++) {
-            for (uint16_t foot_i = 0; foot_i < n_foot[alt_i]; foot_i++) {
-                SCoord &sf0 = sat_foot[alt_i][foot_i];
-                SCoord &sf1 = sat_foot[alt_i][(foot_i+1)%n_foot[alt_i]];   // closure!
-                if (segmentSpanOkRaw (sf0, sf1, 1))
-                    tft.drawLineRaw (sf0.x, sf0.y, sf1.x, sf1.y, fw, fc);
+        // draw foots
+        int fw = getRawPathWidth(s.cs);
+        if (fw) {
+            uint16_t fc = getMapColor(s.cs);
+            for (int alt_i = 0; alt_i < N_FOOT; alt_i++) {
+                for (uint16_t foot_i = 0; foot_i < s.n_foot[alt_i]; foot_i++) {
+                    SCoord &sf0 = s.foot[alt_i][foot_i];
+                    SCoord &sf1 = s.foot[alt_i][(foot_i+1)%s.n_foot[alt_i]];   // closure!
+                    if (segmentSpanOkRaw (sf0, sf1, 1))
+                        tft.drawLineRaw (sf0.x, sf0.y, sf1.x, sf1.y, fw, fc);
+                }
             }
         }
     }
 }
 
-/* draw sat name and next event time in map_name_b if all conditions are met.
+/* draw sat name in name_b if all conditions are met.
  */
-void drawSatNameOnRow(uint16_t y0)
+void drawSatName (void)
 {
-    // check a myriad of conditions (!)
-    if (dx_info_for_sat || !sat || !obs || !SAT_NAME_IS_SET() || map_name_b.x == 0 || SHOWING_PANE_0())
-        return;
-    if (y0 != 0 && (y0 < map_name_b.y || y0 >= map_name_b.y + map_name_b.h))
-        return;
+    for (int i = 0; i < MAX_ACTIVE_SATS; i++) {
 
+        SatState &s = sat_state[i];
 
-    // retrieve saved name without '_'
-    char user_name[NV_SATNAME_LEN];
-    strncpySubChar (user_name, sat_name, ' ', '_', NV_SATNAME_LEN);
+        // check a myriad of conditions (!)
+        if (!s.sat || !obs || s.name_b.x == 0 || (dx_info_for_sat && !SHOWING_PANE_0() && nActiveSats()<2))
+            return;
 
-    // draw name
-    selectFontStyle (LIGHT_FONT, SMALL_FONT);
-    uint16_t un_x = map_name_b.x + (map_name_b.w-getTextWidth(user_name))/2;
-    uint16_t un_y = map_name_b.y + FONT_H - FONT_D;
-    shadowString (user_name, true, getMapColor(SATFOOT_CSPR), un_x, un_y);
+        // retrieve saved name without '_'
+        char user_name[NV_SATNAME_LEN];
+        strncpySubChar (user_name, s.name, ' ', '_', NV_SATNAME_LEN);
 
-    // draw time to next event, if any, unless ESP which never erases
-    float days;
-    PassState ps = findPassState(&days);
-    switch (ps) {
-    case PS_HASSET:             // fallthru
-    case PS_NONE:
-        // nothing to show
-        break;
-    case PS_UPSOON:             // fallthru
-    case PS_UPNOW: {
-        int a, b;
-        char sep;
-        char buf[50];
+        // draw name
         selectFontStyle (LIGHT_FONT, FAST_FONT);
-        formatSexa (days*24, a, sep, b);
-        snprintf (buf, sizeof(buf), "%c %d%c%02d", ps == PS_UPSOON ? 'R' : 'S', a, sep, b);
-        uint16_t buf_w = getTextWidth(buf);
-        uint16_t ut_x = map_name_b.x + (map_name_b.w-buf_w)/2;
-        uint16_t ut_y = map_name_b.y + map_name_b.h - 10;
-        //drawSBox (map_name_b, RA8875_RED);
-
-        SBox time_b;
-        time_b.x = ut_x-2;
-        time_b.y = ut_y-2;
-        time_b.w = buf_w+4;
-        time_b.h = 11;
-        drawMapTag (buf, time_b, getMapColor(SATFOOT_CSPR), RA8875_BLACK);
-
-        }
-        break;
+        uint16_t un_x = s.name_b.x + 2;
+        uint16_t un_y = s.name_b.y + 2;
+        fillSBox (s.name_b, RA8875_BLACK);
+        drawSBox (s.name_b, RA8875_WHITE);
+        tft.setTextColor (RA8875_WHITE);
+        tft.setCursor (un_x, un_y);
+        tft.print (user_name);
     }
 }
 
-/* return whether user has tapped near the head of the satellite path or in the map name
+/* return whether user has tapped near the head of a satellite path or in a map name
+ * and if so, set dxpaneSat
  */
-bool checkSatMapTouch (const SCoord &s)
+bool checkSatMapTouch (const SCoord &tap)
 {
-    // skip if no sat
-    if (!sat || !sat_path)
-        return (false);
+    for (int i = 0; i < MAX_ACTIVE_SATS; i++) {
 
-    SBox sat_b;
-    sat_b.x = sat_path[0].x/tft.SCALESZ-SAT_TOUCH_R;
-    sat_b.y = sat_path[0].y/tft.SCALESZ-SAT_TOUCH_R;
-    sat_b.w = 2*SAT_TOUCH_R;
-    sat_b.h = 2*SAT_TOUCH_R;
+        SatState &s = sat_state[i];
 
-    return (inBox (s, sat_b) || inBox (s, map_name_b));
+        // skip if no sat
+        if (!s.sat || !s.path)
+            continue;
+
+        // allow tapping near the current location or over the name 
+        SBox now_b;
+        now_b.x = s.path[0].x/tft.SCALESZ - SAT_TOUCH_R;
+        now_b.y = s.path[0].y/tft.SCALESZ - SAT_TOUCH_R;
+        now_b.w = 2*SAT_TOUCH_R;
+        now_b.h = 2*SAT_TOUCH_R;
+
+        if (inBox (tap, now_b) || inBox (tap, s.name_b)) {
+            dxpaneSat = i;
+            return (true);
+        }
+    }
+
+    return (false);
 }
 
 /* return whether user has tapped the "DX" label while showing DX info which means op wants
@@ -1676,92 +1742,78 @@ bool checkSatNameTouch (const SCoord &s)
     }
 }
 
-/* display full sat pass unless !dx_info_for_sat
- */
-void drawSatPass()
-{
-    // skip if not showing or showing pane 0
-    if (!dx_info_for_sat || SHOWING_PANE_0())
-        return;
-
-    // erase outside the box
-    tft.fillRect (dx_info_b.x-1, dx_info_b.y-1, dx_info_b.w+2, dx_info_b.h+2, RA8875_BLACK);
-    tft.drawRect (dx_info_b.x-1, dx_info_b.y-1, dx_info_b.w+2, dx_info_b.h+2, GRAY);
-
-    drawSatName();
-    drawSatRSEvents(true);
-    drawSatSkyDome();
-}
-
-/* present list of satellites and let user select up to one, preselecting last known if any.
- * save name in sat_name and NVRAM, even if empty to signify no satellite.
- * return whether a sat was chosen or not.
+/* present list of satellites and let user select up to two, preselecting last known if any.
+ * return whether any sat was chosen or not.
  * N.B. caller must call initScreen on return regardless
  */
 bool querySatSelection()
 {
-
     // we need the whole screen
     closeGimbal();          // avoid dangling connection
     hideClocks();
 
-    NVReadString (NV_SATNAME, sat_name);
-    if (askSat()) {
-        Serial.printf ("SAT: Selected sat '%s'\n", sat_name);
-        if (!satLookup())
-            return (false);
-        findNextPass(sat_name, nowWO(), sat_rs);
-    } else {
-        delete sat;
-        sat = NULL;
+    // get user's choices.
+    // N.B. leave sat_state active in order to show current selection
+    char selections[MAX_ACTIVE_SATS][NV_SATNAME_LEN];
+    int n_sel = askSat(selections);
+
+    // reset all currently active
+    for (int i = 0; i < MAX_ACTIVE_SATS; i++)
+        unsetSat (sat_state[i]);
+
+    // engage any selections
+    for (int i = 0; i < n_sel; i++) {
+        SatState &s = sat_state[i];
+        strncpySubChar (s.name, selections[i], '_', ' ', NV_SATNAME_LEN);
+        Serial.printf ("SAT: Selected sat '%s'\n", selections[i]);
+        if (!satLookup(s))
+            return (false);                     // already showed err
+        NVWriteString (s.nv_name, s.name);
+        findNextPass (s.sat, s.name, nowWO(), s.rs);
+        Serial.printf ("SAT: sat '%s' is ready\n", s.name);
     }
 
-    NVWriteString (NV_SATNAME, sat_name);       // persist name even if empty
-
-    printFreeHeap ("querySatSelection");
-
-    return (SAT_NAME_IS_SET());
+    return (n_sel > 0);
 }
 
-/* install new satellite, if possible, or remove if "none".
+/* install new satellite as the only sat, if valid, or remove if "none".
  * N.B. calls initScreen() if changes sat
  */
 bool setSatFromName (const char *new_name)
 {
-    // remove if "none"
+    // remove all then add if find new_name
+    for (int i = 0; i < MAX_ACTIVE_SATS; i++)
+        unsetSat(sat_state[i]);
+    dxpaneSat = NO_CUR_SAT;
+
+    // remove sat pane too if "none"
     if (strcasecmp (new_name, "none") == 0) {
-        if (SAT_NAME_IS_SET()) {
-            unsetSat();
-            drawOneTimeDX();
-            initEarthMap();
-        }
+        dx_info_for_sat = false;
+        drawOneTimeDX();
+        initEarthMap();
         return (true);
     }
 
     // stop any tracking
     stopGimbalNow();
 
-    // fresh start
-    unsetSat();
-
     // build internal name
-    char tmp_name[NV_SATNAME_LEN];
-    strncpySubChar (tmp_name, new_name, '_', ' ', NV_SATNAME_LEN);
-    strcpy (sat_name, tmp_name);
+    SatState &s = sat_state[0];
+    strncpySubChar (s.name, new_name, '_', ' ', NV_SATNAME_LEN);
 
     // fresh look up
-    if (checkSatUpToDate(NULL)) {
+    if (checkSatUpToDate (s, NULL)) {
 
         // ok
         dx_info_for_sat = true;
-        NVWriteString (NV_SATNAME, sat_name);
+        NVWriteString (s.nv_name, s.name);
         drawSatPass();
         initEarthMap();
         return (true);
 
     } else {
         // failed
-        unsetSat();
+        unsetSat(s);
         return (false);
     }
 }
@@ -1772,48 +1824,88 @@ bool setSatFromName (const char *new_name)
  */
 bool setSatFromTLE (const char *name, const char *t1, const char *t2)
 {
-    if (!tleHasValidChecksum(t1) || !tleHasValidChecksum(t2))
+    if (!tleHasValidChecksum(t1) || !tleHasValidChecksum(t2)) {
+        Serial.printf ("Bad TLE checksum for %s\n", name);
         return(false);
+    }
+
+    // remove all then add
+    for (int i = 0; i < MAX_ACTIVE_SATS; i++)
+        unsetSat(sat_state[i]);
+    dxpaneSat = NO_CUR_SAT;
 
     // stop any tracking
     stopGimbalNow();
 
-    // fresh
-    unsetSat();
+    // build in first state
+    SatState &s = sat_state[0];
+    strncpySubChar (s.name, name, '_', ' ', NV_SATNAME_LEN);
+    s.sat = new Satellite (t1, t2);
 
     // create and check
-    sat = new Satellite (t1, t2);
-    if (satEpochOk(name, nowWO())) {
+    if (satEpochOk (s.sat, s.name, nowWO())) {
 
         // ok
         dx_info_for_sat = true;
-        findNextPass (name, nowWO(), sat_rs);
-        strncpySubChar (sat_name, name, '_', ' ', NV_SATNAME_LEN);
+        findNextPass (s.sat, s.name, nowWO(), s.rs);
         drawSatPass();
         initEarthMap();
         return (true);
 
     } else {
 
-        delete sat;
-        sat = NULL;
+        unsetSat (s);
         fatalSatError ("Elements for %s are out of data", name);
         return (false);
     }
 }
 
-/* called once to return whether there is a valid sat in NV.
+/* called exactly once to return whether there is at least one valid sat in NV.
  * also a good time to insure alarm pin is off.
  */
-bool initSatSelection()
+bool initSat()
 {
-    risetAlarm(BLINKER_OFF);
+    // misc
     Serial.printf ("SAT: max tle age set to %d days\n", maxTLEAgeDays());
-    NVReadString (NV_SATNAME, sat_name);
-    if (!SAT_NAME_IS_SET())
-        return (false);
-printf ("initSatSelection %s\n", sat_name);     // TODO
-    return (setNewSatCircumstance());
+    risetAlarm(BLINKER_OFF);
+
+    // se obs
+    obs = new Observer (de_ll.lat_d, de_ll.lng_d, 0);
+
+    // init each sat -- N.B. must do inline
+    SatState &s0 = sat_state[0];
+    s0.nv_name = NV_SAT1NAME;
+    s0.nv_color = NV_SAT1COLOR;
+    s0.cs = SAT1_CSPR;
+    if (!NVReadString (NV_SAT1NAME, s0.name) || !SAT_NAME_IS_SET(s0) || !checkSatUpToDate (s0, NULL))
+        unsetSat(s0);
+    SatState &s1 = sat_state[1];
+    s1.nv_name = NV_SAT2NAME;
+    s1.nv_color = NV_SAT2COLOR;
+    s1.cs = SAT2_CSPR;
+    if (!NVReadString (NV_SAT2NAME, s1.name) || !SAT_NAME_IS_SET(s1) || !checkSatUpToDate (s1, NULL))
+        unsetSat(s1);
+
+    // N.B. enforce that [1] is active only if [0] is also active
+    if (s1.sat && !s0.sat) {
+
+        // rebuild what was in 1 as 0
+        NVWriteString (s0.nv_name, s0.name);
+        unsetSat (s1);                                  // reset s1.nv_name
+        if (!checkSatUpToDate (s0, NULL))
+            fatalError ("sat %s disappeared", s0.name);
+    }
+
+    // set current to lowest set
+    if (s0.sat)
+        dxpaneSat = 0;
+    else if (s1.sat)
+        dxpaneSat = 1;
+    else
+        dxpaneSat = NO_CUR_SAT;
+
+    // return true if either ok
+    return (s0.sat || s1.sat);
 }
 
 /* return whether new_pass has been set since last call, and always reset.
@@ -1829,7 +1921,10 @@ bool isNewPass()
  */
 bool isSatMoon()
 {
-    return (sat && !strcasecmp (sat_name, "Moon"));
+    int cs = currentSat();
+    if (cs == NO_CUR_SAT)
+        return (false);
+    return (sat_state[cs].sat && !strcasecmp (sat_state[cs].name, "Moon"));
 }
 
 /* return malloced array of malloced strings containing all available satellite names and their TLE;
@@ -1866,11 +1961,11 @@ const char **getAllSatNames()
     return (all_names);
 }
 
-/* return count of parallel lists of next several days UTC rise and set events for the current sat.
+/* produce and return count of parallel lists of next several days UTC rise and set events for the given sat.
  * caller can assume each rises[i] < sets[i].
  * N.B. caller must free each list iff return > 0.
  */
-int nextSatRSEvents (time_t **rises, float **raz, time_t **sets, float **saz)
+static int nextSatRSEvents (SatState &s, time_t **rises, float **raz, time_t **sets, float **saz)
 {
 
     // start now
@@ -1880,10 +1975,10 @@ int nextSatRSEvents (time_t **rises, float **raz, time_t **sets, float **saz)
 
     // make lists for duration of elements
     int n_table = 0;
-    while (satEpochOk(sat_name, t)) {
+    while (satEpochOk(s.sat, s.name, t)) {
 
         SatRiseSet rs;
-        findNextPass(sat_name, t, rs);
+        findNextPass (s.sat, s.name, t, rs);
 
         // avoid messy edge cases
         if (rs.rise_ok && rs.set_ok) {
@@ -1918,7 +2013,7 @@ int nextSatRSEvents (time_t **rises, float **raz, time_t **sets, float **saz)
             }
 
             // start next search half an orbit after set
-            t = st + sat->period()*SECSPERDAY/2;
+            t = st + s.sat->period()*SECSPERDAY/2;
 
         } else if (!rs.ever_up || !rs.ever_down) {
 
@@ -1933,38 +2028,48 @@ int nextSatRSEvents (time_t **rises, float **raz, time_t **sets, float **saz)
     return (n_table);
 }
 
-/* display table of several local DE rise/set events for the current sat using whole screen.
- * return after user has clicked ok or time out.
- * caller should call initScreen() after return.
+/* public version
  */
-static void showNextSatEvents ()
+int nextSatRSEvents (time_t **rises, float **raz, time_t **sets, float **saz)
+{
+    int cs = currentSat();
+    if (cs == NO_CUR_SAT)
+        return (0);
+    return nextSatRSEvents (sat_state[cs], rises, raz, sets, saz);
+}
+
+/* display table of several local DE rise/set events for the given sat using whole screen.
+ * return after user has clicked ok or time out.
+ * N.B. caller should call initScreen() after return.
+ */
+static void showNextSatEvents (SatState &s)
 {
     // clean
     hideClocks();
     eraseScreen();
 
     // setup layout
-    #define _SNS_LR_B     10                    // left-right border
-    #define _SNS_TOP_B    10                    // top border
-    #define _SNS_DAY_W    60                    // width of day column
-    #define _SNS_HHMM_W   130                   // width of HH:MM@az columns
-    #define _SNS_ROWH     34                    // row height
-    #define _SNS_TIMEOUT  30000                 // ms
-    #define _SNS_OKY      12                    // Ok box y
+    #define _SNE_LR_B     10                    // left-right border
+    #define _SNE_TOP_B    10                    // top border
+    #define _SNE_DAY_W    60                    // width of day column
+    #define _SNE_HHMM_W   130                   // width of HH:MM@az columns
+    #define _SNE_ROWH     34                    // row height
+    #define _SNE_TIMEOUT  30000                 // ms
+    #define _SNE_OKY      12                    // Ok box y
 
     // init scan coords
-    uint16_t x = _SNS_LR_B;
-    uint16_t y = _SNS_ROWH + _SNS_TOP_B;
+    uint16_t x = _SNE_LR_B;
+    uint16_t y = _SNE_ROWH + _SNE_TOP_B;
 
     // draw header prompt
     char user_name[NV_SATNAME_LEN];
-    strncpySubChar (user_name, sat_name, ' ', '_', NV_SATNAME_LEN);
+    strncpySubChar (user_name, s.name, ' ', '_', NV_SATNAME_LEN);
     selectFontStyle (LIGHT_FONT, SMALL_FONT);
     tft.setTextColor (DE_COLOR);
     tft.setCursor (x, y); tft.print ("Day");
-    tft.setCursor (x+_SNS_DAY_W, y); tft.print ("Rise    @Az");
-    tft.setCursor (x+_SNS_DAY_W+_SNS_HHMM_W, y); tft.print ("Set      @Az");
-    tft.setCursor (x+_SNS_DAY_W+2*_SNS_HHMM_W, y); tft.print (" Up");
+    tft.setCursor (x+_SNE_DAY_W, y); tft.print ("Rise    @Az");
+    tft.setCursor (x+_SNE_DAY_W+_SNE_HHMM_W, y); tft.print ("Set      @Az");
+    tft.setCursor (x+_SNE_DAY_W+2*_SNE_HHMM_W, y); tft.print (" Up");
     tft.setTextColor (RA8875_RED); tft.print (" >10 Mins      ");
     tft.setTextColor (DE_COLOR);
     tft.print (user_name);
@@ -1972,21 +2077,19 @@ static void showNextSatEvents ()
     // draw ok button box
     SBox ok_b;
     ok_b.w = 100;
-    ok_b.x = tft.width() - ok_b.w - _SNS_LR_B;
-    ok_b.y = _SNS_OKY;
-    ok_b.h = _SNS_ROWH;
+    ok_b.x = tft.width() - ok_b.w - _SNE_LR_B;
+    ok_b.y = _SNE_OKY;
+    ok_b.h = _SNE_ROWH;
     static const char button_name[] = "Ok";
     drawStringInBox (button_name, ok_b, false, RA8875_GREEN);
 
     // advance to first data row
-    y += _SNS_ROWH;
+    y += _SNE_ROWH;
 
-    // get list of times (ESP takes a while so show signs of life)
-    tft.setCursor (x, y);
-    tft.print ("Calculating...");
+    // get list of times
     time_t *rises, *sets;
     float *razs, *sazs;
-    int n_times = nextSatRSEvents (&rises, &razs, &sets, &sazs);
+    int n_times = nextSatRSEvents (s, &rises, &razs, &sets, &sazs);
     tft.fillRect (x, y-24, 250, 100, RA8875_BLACK);     // font y - font height
 
     // show list, if any
@@ -2024,16 +2127,16 @@ static void showNextSatEvents ()
 
             // show rise time/az
             snprintf (buf, sizeof(buf), "%02dh%02d @%.0f", hour(rt), minute(rt), razs[i]);
-            tft.setCursor (x+_SNS_DAY_W, y);
+            tft.setCursor (x+_SNE_DAY_W, y);
             tft.print (buf);
 
             // if set time is tomorrow start new line with blank rise time
             if (rt_wd != st_wd) {
                 // next row with wrap
-                if ((y += _SNS_ROWH) > tft.height()) {
+                if ((y += _SNE_ROWH) > tft.height()) {
                     if ((x += tft.width()/2) > tft.width())
                         break;                          // no more room
-                    y = 2*_SNS_ROWH + _SNS_TOP_B;       // skip ok_b
+                    y = 2*_SNE_ROWH + _SNE_TOP_B;       // skip ok_b
                 }
 
                 snprintf (buf, sizeof(buf), "%.3s", dayShortStr(st_wd));
@@ -2043,7 +2146,7 @@ static void showNextSatEvents ()
 
             // show set time/az
             snprintf (buf, sizeof(buf), "%02dh%02d @%.0f", hour(st), minute(st), sazs[i]);
-            tft.setCursor (x+_SNS_DAY_W+_SNS_HHMM_W, y);
+            tft.setCursor (x+_SNE_DAY_W+_SNE_HHMM_W, y);
             tft.print (buf);
 
             // show up time, beware longer than 1 hour (moon!)
@@ -2051,15 +2154,15 @@ static void showNextSatEvents ()
                 snprintf (buf, sizeof(buf), "%02dh%02d", up/3600, (up-3600*(up/3600))/60);
             else
                 snprintf (buf, sizeof(buf), "%02d:%02d", up/60, up-60*(up/60));
-            tft.setCursor (x+_SNS_DAY_W+2*_SNS_HHMM_W, y);
+            tft.setCursor (x+_SNE_DAY_W+2*_SNE_HHMM_W, y);
             tft.setTextColor (up >= 600 ? RA8875_RED : RA8875_WHITE);
             tft.print (buf);
 
             // next row with wrap
-            if ((y += _SNS_ROWH) > tft.height()) {
+            if ((y += _SNE_ROWH) > tft.height()) {
                 if ((x += tft.width()/2) > tft.width())
                     break;                              // no more room
-                y = 2*_SNS_ROWH + _SNS_TOP_B;           // skip ok_b
+                y = 2*_SNE_ROWH + _SNE_TOP_B;           // skip ok_b
             }
         }
 
@@ -2075,7 +2178,7 @@ static void showNextSatEvents ()
         ok_b,
         UI_UFuncNone,
         UF_UNUSED,
-        _SNS_TIMEOUT,
+        _SNE_TIMEOUT,
         UF_NOCLOCKS,
         {0, 0}, TT_NONE, '\0', false, false
     };
@@ -2094,68 +2197,155 @@ static void showNextSatEvents ()
  */
 void drawDXSatMenu (const SCoord &s)
 {
-    // list menu items. N.B. enum and mitems[] must be in same order
+    // handy names for satellite menu indices.
+    // N.B. must be in same order as mitems[] !!
     enum {
-        _DXS_CHGSAT, _DXS_SATRST, _DXS_SATOFF, _DXS_SHOWTOOL, _DXS_SHOWDX, _DXS_N
+        _SMI_CHOOSE,
+        _SMI_INFO,
+        _SMI_NAME1,
+        _SMI_PATH1, _SMI_PASS1, _SMI_TABLE1, _SMI_PLAN1,
+        _SMI_NAME2,
+        _SMI_PATH2, _SMI_PASS2, _SMI_TABLE2, _SMI_PLAN2,
+        _SMI_N,
     };
-    #define _DXS_INDENT 5
-    MenuItem mitems[_DXS_N] = {
-        {MENU_1OFN, true,  1, _DXS_INDENT, "Change satellite", 0},
-        {MENU_1OFN, false, 1, _DXS_INDENT, "Rise/set table", 0},
-        {MENU_1OFN, false, 1, _DXS_INDENT, "Turn off sat", 0},
-        {MENU_1OFN, false, 1, _DXS_INDENT, "Show planning tool", 0},
-        {MENU_1OFN, false, 1, _DXS_INDENT, "Show DX Info", 0},
+
+    // decide which menu items to show
+    const int n_sats = nActiveSats();
+    const int curr_s = currentSat();
+    const MenuFieldType menu_name1 = n_sats > 0  ? MENU_LABEL : MENU_IGNORE;
+    const MenuFieldType menu_sat1  = n_sats > 0  ? MENU_1OFN  : MENU_IGNORE;
+    const MenuFieldType menu_pass1 = curr_s != 0 ? MENU_1OFN  : MENU_IGNORE;
+    const MenuFieldType menu_name2 = n_sats > 1  ? MENU_LABEL : MENU_IGNORE;
+    const MenuFieldType menu_sat2  = n_sats > 1  ? MENU_1OFN  : MENU_IGNORE;
+    const MenuFieldType menu_pass2 = curr_s != 1 ? MENU_1OFN  : MENU_IGNORE;
+
+    // set path states
+    bool path1 = sat_state[0].show_path;
+    bool path2 = sat_state[1].show_path;
+    const MenuFieldType menu_path1 = n_sats > 0 ? MENU_TOGGLE : MENU_IGNORE;
+    const MenuFieldType menu_path2 = n_sats > 1 ? MENU_TOGGLE : MENU_IGNORE;
+
+    // retrieve saved names without '_'
+    char name1[NV_SATNAME_LEN] = "", name2[NV_SATNAME_LEN] = "";
+    if (n_sats > 0)
+        strncpySubChar (name1, sat_state[0].name, ' ', '_', NV_SATNAME_LEN);
+    if (n_sats > 1)
+        strncpySubChar (name2, sat_state[1].name, ' ', '_', NV_SATNAME_LEN);
+
+    // mark current with *
+
+    #define _DXS_INDENT1 5
+    #define _DXS_INDENT2 10
+    MenuItem mitems[_SMI_N] = {
+        {MENU_1OFN,   false, 1, _DXS_INDENT1,  "Choose satellites", NULL},
+        {MENU_1OFN,   false, 1, _DXS_INDENT1,  "Show DX Info here", NULL},
+
+        {menu_name1,  false, 1, _DXS_INDENT1,  name1, NULL},
+        {menu_path1,  path1, 2, _DXS_INDENT2,  "Show path also", NULL},
+        {menu_pass1,  false, 1, _DXS_INDENT2,  "Show pass here", NULL},
+        {menu_sat1,   false, 1, _DXS_INDENT2,  "Show rise/set table", NULL},
+        {menu_sat1,   false, 1, _DXS_INDENT2,  "Show planning tool", NULL},
+
+        {menu_name2,  false, 1, _DXS_INDENT1,  name2, NULL},
+        {menu_path2,  path2, 3, _DXS_INDENT2,  "Show path also", NULL},
+        {menu_pass2,  false, 1, _DXS_INDENT2,  "Show pass here", NULL},
+        {menu_sat2,   false, 1, _DXS_INDENT2,  "Show rise/set table", NULL},
+        {menu_sat2,   false, 1, _DXS_INDENT2,  "Show planning tool", NULL},
     };
 
     // box for menu
     SBox menu_b;
-    menu_b.x = fminf (s.x, dx_info_b.x + dx_info_b.w - 130);
-    menu_b.y = fminf (s.y, dx_info_b.y + dx_info_b.h - (_DXS_N+1)*14);
+    menu_b.x = dx_info_b.x + 1;
+    menu_b.y = dx_info_b.y + 40;
     menu_b.w = 0;                               // shrink to fit
 
     // run menu
     SBox ok_b;
-    MenuInfo menu = {menu_b, ok_b, UF_NOCLOCKS, M_CANCELOK, 1, _DXS_N, mitems};
+    MenuInfo menu = {menu_b, ok_b, UF_NOCLOCKS, M_CANCELOK, 1, _SMI_N, mitems};
     if (runMenu (menu)) {
-        if (mitems[_DXS_SHOWDX].set) {
-            // return to normal DX info but leave sat functional
-            dx_info_for_sat = false;
-            drawOneTimeDX();
-            drawDXInfo();
+        for (int i = 0; i < _SMI_N; i++) {
 
-        } else if (mitems[_DXS_CHGSAT].set) {
-            // show selection of sats, op may choose one or none
-            dx_info_for_sat = querySatSelection();
-            initScreen();
+            // check path option
+            switch (i) {
+            case _SMI_PATH1:
+                // toggle path for sat 0
+                sat_state[0].show_path = mitems[i].set;
+                break;
+            case _SMI_PATH2:
+                // toggle path for sat 1
+                sat_state[1].show_path = mitems[i].set;
+                break;
+            }
 
-        } else if (mitems[_DXS_SATOFF].set) {
-            // turn off sat and return to normal DX info
-            unsetSat();
-            drawOneTimeDX();
-            initEarthMap();
-
-        } else if (mitems[_DXS_SATRST].set) {
-            // uses entire screen
-            showNextSatEvents();
-            initScreen();
-
-        } else if (mitems[_DXS_SHOWTOOL].set) {
-            // restore DX pane, show tool then restore normal map
-            drawSatPass();
-            drawSatTool();
-            initEarthMap();
-
-        } else {
-            fatalError ("no dx sat menu");
+            // other items just activate when set
+            if (mitems[i].set) {
+                switch (i) {
+                case _SMI_CHOOSE:
+                    // show selection of sats to choose
+                    dx_info_for_sat = querySatSelection();
+                    initScreen();
+                    break;
+                case _SMI_INFO:
+                    // return to normal DX info but leave sats functional
+                    dx_info_for_sat = false;
+                    drawOneTimeDX();
+                    drawDXInfo();
+                    break;
+                case _SMI_NAME1:
+                    fatalError ("sat menu bogus entry %d", i);
+                    break;
+                case _SMI_PASS1:
+                    // show pass for sat 0
+                    dxpaneSat = 0;
+                    drawSatPass();
+                    break;
+                case _SMI_TABLE1:
+                    // show rise/set table for sat 0
+                    dxpaneSat = 0;
+                    showNextSatEvents (sat_state[0]);
+                    initScreen();
+                    break;
+                case _SMI_PLAN1:
+                    // restore DX pane and show tool for sat 0 then restore normal map
+                    dxpaneSat = 1;
+                    drawSatPass();
+                    drawSatTool();
+                    initEarthMap();
+                    break;
+                case _SMI_NAME2:
+                    fatalError ("sat menu bogus entry %d", i);
+                    break;
+                case _SMI_PASS2:
+                    // show pass for sat 1
+                    dxpaneSat = 1;
+                    drawSatPass();
+                    break;
+                case _SMI_TABLE2:
+                    // show rise/set table for sat 1
+                    dxpaneSat = 1;
+                    showNextSatEvents (sat_state[1]);
+                    initScreen();
+                    break;
+                case _SMI_PLAN2:
+                    // restore DX pane and show tool for sat 1 then restore normal map
+                    dxpaneSat = 1;
+                    drawSatPass();
+                    drawSatTool();
+                    initEarthMap();
+                    break;
+                case _SMI_N:
+                    // lint
+                    fatalError ("sat menu bogus entry %d", i);
+                    break;
+                }
+            }
         }
-
     }
-
 }
 
 /* return whether a satellite is currently in play
  */
 bool isSatDefined()
 {
-    return (sat && obs);
+    return (nActiveSats() > 0);
 }

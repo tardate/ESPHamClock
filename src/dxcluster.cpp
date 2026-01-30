@@ -72,7 +72,7 @@ static void dxcSendMsg (const char *fmt, ...);
 
 /* draw, else erase, the clear spots control
  */
-static void drawClearListBtn (const SBox &box, bool draw)
+static void drawClearListBtn (bool draw)
 {
     uint16_t color = draw ? DXC_COLOR : RA8875_BLACK;
 
@@ -121,7 +121,7 @@ static void rebuildDXWatchList(void)
 static void drawAllVisDXCSpots (const SBox &box)
 {
     drawVisibleSpots (WLID_DX, dxwl_spots, dxc_ss, box, DXC_COLOR);
-    drawClearListBtn (box, dxc_ss.n_data > 0);
+    drawClearListBtn (dxc_ss.n_data > 0);
 }
 
 /* handy check whether New Spot symbol needs changing on/off

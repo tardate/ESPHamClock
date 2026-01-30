@@ -622,6 +622,10 @@ static const WXInfo *findWXTXCache (const LatLong &ll, bool is_de, Message &ynot
     // who are we?
     WXCache &wxc = is_de ? de_cache : dx_cache;
 
+    // prep err msg if needed
+    char retry_msg[50];
+    snprintf (retry_msg, sizeof(retry_msg), "%s WX/TZ", is_de ? "DE" : "DX");
+
     // new location?
     bool new_loc = ll.lat_d != wxc.lat_d || ll.lng_d != wxc.lng_d;
 
@@ -630,8 +634,6 @@ static const WXInfo *findWXTXCache (const LatLong &ll, bool is_de, Message &ynot
 
         // get fresh, schedule retry if fail
         if (!retrieveCurrentWX (ll, is_de, wxc)) {
-            char retry_msg[50];
-            snprintf (retry_msg, sizeof(retry_msg), "%s WX/TZ", is_de ? "DE" : "DX");
             next_err_update = nextWiFiRetry (retry_msg);
             wxc.ok = false;
             ynot.set(wxc.ynot);
@@ -653,7 +655,9 @@ static const WXInfo *findWXTXCache (const LatLong &ll, bool is_de, Message &ynot
     // return requested info else why not
     if (wxc.ok)
         return (&wxc.info);
-    ynot.set (wxc.ynot);
+
+    next_err_update = nextWiFiRetry (retry_msg);
+    ynot.set ("update failed");
     return (NULL);
 }
 

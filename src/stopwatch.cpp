@@ -268,6 +268,7 @@ AlarmOnce alarm_once = {
     {ALMO_LX0, ALMO_Y0, ALMO_LW, SW_BH},
     {ALMO_TX0, ALMO_Y0, ALMO_TW, SW_BH},
     {BC_ALMO_X, BC_ALMO_Y, BC_ALMO_W, BC_ALMO_H},
+    NULL
 };
 static AlarmDaily alarm_daily = {
     0, false, ALMS_OFF,

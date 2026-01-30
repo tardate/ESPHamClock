@@ -983,7 +983,7 @@ void drawMoreEarth()
                 drawDXPath();
             drawPSKPaths ();
             drawAllSymbols();
-            drawSatNameOnRow (0);
+            drawSatName();
             drawInfoBox();
         }
 

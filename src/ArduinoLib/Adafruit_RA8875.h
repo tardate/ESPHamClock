@@ -152,7 +152,11 @@ class Adafruit_RA8875 {
 	void fillCircle(int16_t x0, int16_t y0, uint16_t r, uint16_t color16);
 	void drawTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2,
 	    uint16_t color16);
+	void drawTriangleRaw(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2,
+	    uint16_t color16);
 	void fillTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2,
+	    uint16_t color16);
+	void fillTriangleRaw(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2,
 	    uint16_t color16);
 
         // non-standard access to full underlying resolution

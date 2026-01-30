@@ -429,8 +429,8 @@ static StringPrompt string_pr[N_SPR] = {
     {0, {180, R2Y(5), 60, PR_H}, {240, R2Y(5), 560, PR_H}, "host:", ntp_host, NV_NTPHOST_LEN, 0, 0,
                 "Enter IP address or DNS host name of NTP server"},
 
-    {0, { 90, R2Y(6), 60, PR_H}, {160, R2Y(6), 500, PR_H}, "SSID:", wifi_ssid, NV_WIFI_SSID_LEN, 0,0},
-    {0, {670, R2Y(6),110, PR_H}, { 10, R2Y(7), 789, PR_H}, "Password:", wifi_pw, NV_WIFI_PW_LEN, 0,0},
+    {0, { 90, R2Y(6), 60, PR_H}, {160, R2Y(6), 500, PR_H}, "SSID:", wifi_ssid, NV_WIFI_SSID_LEN, 0,0,NULL},
+    {0, {670, R2Y(6),110, PR_H}, { 10, R2Y(7), 789, PR_H}, "Password:", wifi_pw, NV_WIFI_PW_LEN, 0,0,NULL},
 
     // "page 2" -- index 1
 
@@ -445,20 +445,20 @@ static StringPrompt string_pr[N_SPR] = {
 
     // three overlapping sets, visibility depends on DXCLCMDPGA/B_BPR
 
-    {1, {350, R2Y(3), 40, PR_H}, {390, R2Y(3), 409, PR_H}, NULL, dxcl_cmds[0], NV_DXCLCMD_LEN, 0,0},
-    {1, {350, R2Y(4), 40, PR_H}, {390, R2Y(4), 409, PR_H}, NULL, dxcl_cmds[1], NV_DXCLCMD_LEN, 0,0},
-    {1, {350, R2Y(5), 40, PR_H}, {390, R2Y(5), 409, PR_H}, NULL, dxcl_cmds[2], NV_DXCLCMD_LEN, 0,0},
-    {1, {350, R2Y(6), 40, PR_H}, {390, R2Y(6), 409, PR_H}, NULL, dxcl_cmds[3], NV_DXCLCMD_LEN, 0,0},
+    {1, {350, R2Y(3), 40, PR_H}, {390, R2Y(3), 409, PR_H}, NULL, dxcl_cmds[0], NV_DXCLCMD_LEN, 0,0,NULL},
+    {1, {350, R2Y(4), 40, PR_H}, {390, R2Y(4), 409, PR_H}, NULL, dxcl_cmds[1], NV_DXCLCMD_LEN, 0,0,NULL},
+    {1, {350, R2Y(5), 40, PR_H}, {390, R2Y(5), 409, PR_H}, NULL, dxcl_cmds[2], NV_DXCLCMD_LEN, 0,0,NULL},
+    {1, {350, R2Y(6), 40, PR_H}, {390, R2Y(6), 409, PR_H}, NULL, dxcl_cmds[3], NV_DXCLCMD_LEN, 0,0,NULL},
 
-    {1, {350, R2Y(3), 40, PR_H}, {390, R2Y(3), 409, PR_H}, NULL, dxcl_cmds[4], NV_DXCLCMD_LEN, 0,0},
-    {1, {350, R2Y(4), 40, PR_H}, {390, R2Y(4), 409, PR_H}, NULL, dxcl_cmds[5], NV_DXCLCMD_LEN, 0,0},
-    {1, {350, R2Y(5), 40, PR_H}, {390, R2Y(5), 409, PR_H}, NULL, dxcl_cmds[6], NV_DXCLCMD_LEN, 0,0},
-    {1, {350, R2Y(6), 40, PR_H}, {390, R2Y(6), 409, PR_H}, NULL, dxcl_cmds[7], NV_DXCLCMD_LEN, 0,0},
+    {1, {350, R2Y(3), 40, PR_H}, {390, R2Y(3), 409, PR_H}, NULL, dxcl_cmds[4], NV_DXCLCMD_LEN, 0,0,NULL},
+    {1, {350, R2Y(4), 40, PR_H}, {390, R2Y(4), 409, PR_H}, NULL, dxcl_cmds[5], NV_DXCLCMD_LEN, 0,0,NULL},
+    {1, {350, R2Y(5), 40, PR_H}, {390, R2Y(5), 409, PR_H}, NULL, dxcl_cmds[6], NV_DXCLCMD_LEN, 0,0,NULL},
+    {1, {350, R2Y(6), 40, PR_H}, {390, R2Y(6), 409, PR_H}, NULL, dxcl_cmds[7], NV_DXCLCMD_LEN, 0,0,NULL},
 
-    {1, {350, R2Y(3), 40, PR_H}, {390, R2Y(3), 409, PR_H}, NULL, dxcl_cmds[8], NV_DXCLCMD_LEN, 0,0},
-    {1, {350, R2Y(4), 40, PR_H}, {390, R2Y(4), 409, PR_H}, NULL, dxcl_cmds[9], NV_DXCLCMD_LEN, 0,0},
-    {1, {350, R2Y(5), 40, PR_H}, {390, R2Y(5), 409, PR_H}, NULL, dxcl_cmds[10], NV_DXCLCMD_LEN, 0,0},
-    {1, {350, R2Y(6), 40, PR_H}, {390, R2Y(6), 409, PR_H}, NULL, dxcl_cmds[11], NV_DXCLCMD_LEN, 0,0},
+    {1, {350, R2Y(3), 40, PR_H}, {390, R2Y(3), 409, PR_H}, NULL, dxcl_cmds[8], NV_DXCLCMD_LEN, 0,0,NULL},
+    {1, {350, R2Y(4), 40, PR_H}, {390, R2Y(4), 409, PR_H}, NULL, dxcl_cmds[9], NV_DXCLCMD_LEN, 0,0,NULL},
+    {1, {350, R2Y(5), 40, PR_H}, {390, R2Y(5), 409, PR_H}, NULL, dxcl_cmds[10], NV_DXCLCMD_LEN, 0,0,NULL},
+    {1, {350, R2Y(6), 40, PR_H}, {390, R2Y(6), 409, PR_H}, NULL, dxcl_cmds[11], NV_DXCLCMD_LEN, 0,0,NULL},
 
 
     // "page 3" -- index 2
@@ -691,7 +691,7 @@ static BoolPrompt bool_pr[N_BPR] = {
 
     {0, {340, R2Y(3),  70, PR_H},  {410, R2Y(3), 70, PR_H}, false, "baud:", "4800", NULL, NMEABAUDB_BPR,
                 "Select baud rate of NMEA serial device"},
-    {0, {340, R2Y(3),  70, PR_H},  {410, R2Y(3), 70, PR_H}, false, NULL, "9600", "38400", NMEABAUDA_BPR},
+    {0, {340, R2Y(3),  70, PR_H},  {410, R2Y(3), 70, PR_H}, false, NULL, "9600", "38400", NMEABAUDA_BPR, 0},
                                              // 3x entangled: FX -> TF -> TT ...
 
 
@@ -703,11 +703,11 @@ static BoolPrompt bool_pr[N_BPR] = {
                                                             ntp_sn[NTPSC_NO], ntp_sn[NTPSC_DEF], NTPB_BPR,
                 "Whether to use the built-in list of NTP servers, a specified NTP server or computer time"},
     {0, { 10, R2Y(5), 180, PR_H}, {180, R2Y(5), 110, PR_H}, false, NULL,
-                                                            ntp_sn[NTPSC_OS], ntp_sn[NTPSC_HOST], NTPA_BPR},
+                                                        ntp_sn[NTPSC_OS], ntp_sn[NTPSC_HOST], NTPA_BPR, 0},
                                                 // 4x entangled: FF -> TF -> FT -> TT -> ...
 
 
-    {0, {10,  R2Y(6),  70, PR_H}, {100, R2Y(6), 30,  PR_H}, false, "WiFi?", "No", NULL, NOMATE},
+    {0, {10,  R2Y(6),  70, PR_H}, {100, R2Y(6), 30,  PR_H}, false, "WiFi?", "No", NULL, NOMATE, NULL},
 
 
     // "page 2" -- index 1
@@ -723,7 +723,7 @@ static BoolPrompt bool_pr[N_BPR] = {
                                                         wla_name[WLA_OFF], wla_name[WLA_NOT], DXWLISTB_BPR,
                 "Define the style and filter for a Cluster watch list"},
     {1, {15, R2Y(1),  55, PR_H},  {85, R2Y(1), 55, PR_H}, false, NULL,
-                                                        wla_name[WLA_FLAG], wla_name[WLA_ONLY], DXWLISTA_BPR},
+                                                    wla_name[WLA_FLAG], wla_name[WLA_ONLY], DXWLISTA_BPR,0},
                                              // 4x entangled: FF -> TF -> FT -> TT -> ...
 
 
@@ -732,7 +732,7 @@ static BoolPrompt bool_pr[N_BPR] = {
 
     {1, {350, R2Y(2),   35, PR_H}, {385, R2Y(2), 20, PR_H},  false, "Pg", "1", NULL, DXCLCMDPGB_BPR,
                 "Advance to next page of native cluster commands"},
-    {1, {350, R2Y(2),   35, PR_H}, {385, R2Y(2), 20, PR_H},  false, "Pg", "2", "3", DXCLCMDPGA_BPR},
+    {1, {350, R2Y(2),   35, PR_H}, {385, R2Y(2), 20, PR_H},  false, "Pg", "2", "3", DXCLCMDPGA_BPR,0},
                                              // 3x entangled: FX -> TF -> TT ...
 
 
@@ -775,14 +775,14 @@ static BoolPrompt bool_pr[N_BPR] = {
                                                     wla_name[WLA_OFF], wla_name[WLA_NOT], ADIFWLISTB_BPR,
                 "Define the style and filter for an ADIF file watch list"},
     {2, {10,  R2Y(5), 150, PR_H},  {160, R2Y(5),  55, PR_H}, false, NULL,
-                                                    wla_name[WLA_FLAG], wla_name[WLA_ONLY], ADIFWLISTA_BPR},
+                                                    wla_name[WLA_FLAG], wla_name[WLA_ONLY], ADIFWLISTA_BPR,0},
                                                 // 4x entangled: FF -> TF -> FT -> TT -> ...
 
     {2, {10,  R2Y(6), 150, PR_H},  {160, R2Y(6),  55, PR_H}, false, "ONTA watch:",
                                                     wla_name[WLA_OFF], wla_name[WLA_NOT], ONTAWLISTB_BPR,
                 "Define the style and filter for OnTheAir watch list"},
     {2, {10,  R2Y(6), 150, PR_H},  {160, R2Y(6),  55, PR_H}, false, NULL,
-                                                    wla_name[WLA_FLAG], wla_name[WLA_ONLY], ONTAWLISTA_BPR},
+                                                    wla_name[WLA_FLAG], wla_name[WLA_ONLY], ONTAWLISTA_BPR,0},
                                                 // 4x entangled: FF -> TF -> FT -> TT -> ...
 
 
@@ -796,7 +796,7 @@ static BoolPrompt bool_pr[N_BPR] = {
 
     {3, {100, R2Y(5), 120, PR_H},  {250, R2Y(5),  120, PR_H}, false, "KX3?", "No", NULL, KX3B_BPR,
                 "Whether or at which baud rate to control a KX3 transceiver via the RPi GPIO pin"},
-    {3, {250, R2Y(5),   0, PR_H},  {250, R2Y(5),  120, PR_H}, false, NULL, "4800 bps", "38400 bps", KX3A_BPR},
+    {3, {250, R2Y(5),   0, PR_H},  {250, R2Y(5),  120, PR_H}, false, NULL, "4800 bps","38400 bps",KX3A_BPR,0},
                                              // 3x entangled: FX -> TF -> TT ...
 
 
@@ -805,10 +805,9 @@ static BoolPrompt bool_pr[N_BPR] = {
     // "page 5" -- index 4
 
     {4, {10,  R2Y(1), 190, PR_H},  {200, R2Y(1), 170, PR_H}, false, "Date order?",
-                    "Mon Day Year", NULL, DATEFMT_DMYYMD_BPR,
-                    "Set desired date format"},
+                    "Mon Day Year", NULL, DATEFMT_DMYYMD_BPR, "Set desired date format"},
     {4, {10,  R2Y(1), 190, PR_H},  {200, R2Y(1), 170, PR_H}, false, NULL,
-                                        "Day Mon Year", "Year Mon Day", DATEFMT_MDY_BPR},
+                                        "Day Mon Year", "Year Mon Day", DATEFMT_MDY_BPR, 0},
                                              // 3x entangled: FX -> TF -> TT ...
 
 
@@ -828,7 +827,7 @@ static BoolPrompt bool_pr[N_BPR] = {
                     units_names[UNITS_IMP], NULL, UNITSB_BPR,
                     "Select units for temperature, distance and pressure"},
     {4, {10,  R2Y(3), 190, PR_H},  {200, R2Y(3), 170, PR_H}, false, NULL,
-                                        units_names[UNITS_MET], units_names[UNITS_BRIT], UNITSA_BPR},
+                                        units_names[UNITS_MET], units_names[UNITS_BRIT], UNITSA_BPR, 0},
                                              // 3x entangled: FX -> TF -> TT ...
 
 
@@ -850,7 +849,7 @@ static BoolPrompt bool_pr[N_BPR] = {
                     lbl_styles[LBL_NONE], lbl_styles[LBL_DOT], SPOTLBLB_BPR,
                     "How or whether to label spot locations on map"},
     {4, {10,  R2Y(5), 190, PR_H},  {200, R2Y(5), 170, PR_H}, false, NULL,
-                    lbl_styles[LBL_PREFIX], lbl_styles[LBL_CALL], SPOTLBLA_BPR},
+                    lbl_styles[LBL_PREFIX], lbl_styles[LBL_CALL], SPOTLBLA_BPR, 0},
                                                 // 4x entangled: FF -> TF -> FT -> TT -> ...
 
 
@@ -858,7 +857,7 @@ static BoolPrompt bool_pr[N_BPR] = {
                     minLblD[0], minLblD[1], LBLDISTB_BPR,
                     "Minimum distance from DE to label spots; mi or km as per Units"},
     {4, {400, R2Y(5), 190, PR_H},  {590, R2Y(5), 170, PR_H}, false, NULL,
-                    minLblD[2], minLblD[3], LBLDISTA_BPR},
+                    minLblD[2], minLblD[3], LBLDISTA_BPR, 0},
                                                 // 4x entangled: FF -> TF -> FT -> TT -> ...
 
 
@@ -869,7 +868,7 @@ static BoolPrompt bool_pr[N_BPR] = {
 
     {4, {400, R2Y(6), 190, PR_H},  {590, R2Y(6), 170, PR_H}, false, "Gray display?", "No", NULL, GRAYB_BPR,
                     "Whether to render the map or entire screen in shades of gray"},
-    {4, {400, R2Y(6), 190, PR_H},  {590, R2Y(6), 170, PR_H}, false, NULL, "All", "Map", GRAYA_BPR},
+    {4, {400, R2Y(6), 190, PR_H},  {590, R2Y(6), 170, PR_H}, false, NULL, "All", "Map", GRAYA_BPR, 0},
                                                 // 3x entangled: FX -> TF -> TT ...
                                                 // N.B. names must match getGrayDisplay();
 
@@ -878,7 +877,7 @@ static BoolPrompt bool_pr[N_BPR] = {
                     panerotp_strs[0], panerotp_strs[1], PANE_ROTPB_BPR,
                     "Select how often to change data pane if more than one is selected"},
     {4, {10,  R2Y(7), 190, PR_H},  {200, R2Y(7), 170, PR_H}, false, NULL,
-                    panerotp_strs[2], panerotp_strs[3], PANE_ROTPA_BPR},
+                    panerotp_strs[2], panerotp_strs[3], PANE_ROTPA_BPR, 0},
                                                 // 4x entangled: FF -> TF -> FT -> TT -> ...
 
 
@@ -886,7 +885,7 @@ static BoolPrompt bool_pr[N_BPR] = {
                     maprotp_strs[0], maprotp_strs[1], MAP_ROTPB_BPR,
                     "Select how often to change map style if more than one is selected"},
     {4, {400, R2Y(7), 190, PR_H},  {590, R2Y(7), 170, PR_H}, false, NULL,
-                    maprotp_strs[2], maprotp_strs[3], MAP_ROTPA_BPR},
+                    maprotp_strs[2], maprotp_strs[3], MAP_ROTPA_BPR, 0},
                                                 // 4x entangled: FF -> TF -> FT -> TT -> ...
 
 
@@ -900,7 +899,7 @@ static BoolPrompt bool_pr[N_BPR] = {
                     qrz_urltable[QRZ_NONE].label, qrz_urltable[QRZ_QRZ].label, QRZBIOB_BPR,
                     "Whether and from which resource to offer looking up cluster spot biography"},
     {4, {400, R2Y(8), 190, PR_H},  {590, R2Y(8), 170, PR_H}, false, NULL,
-                                qrz_urltable[QRZ_HAMCALL].label, qrz_urltable[QRZ_CQQRZ].label, QRZBIOA_BPR},
+                                qrz_urltable[QRZ_HAMCALL].label, qrz_urltable[QRZ_CQQRZ].label,QRZBIOA_BPR,0},
                                                 // 4x entangled: FF -> TF -> FT -> TT -> ...
 
 
@@ -926,7 +925,7 @@ static BoolPrompt bool_pr[N_BPR] = {
                     "Whether or during which hour HamClock will automatically update to latest version"},
 #endif // NO_UPGRADE
     {4, {400, R2Y(10), 190, PR_H},  {590, R2Y(10), 170, PR_H}, false, NULL,
-                    autoup_tbl[AUP_P2].label, autoup_tbl[AUP_P3].label, AUTOUPA_BPR},
+                    autoup_tbl[AUP_P2].label, autoup_tbl[AUP_P3].label, AUTOUPA_BPR, 0},
                                                 // 4x entangled: FF -> TF -> FT -> TT -> ...
 
 
@@ -939,7 +938,7 @@ static BoolPrompt bool_pr[N_BPR] = {
                     maxTLEAges[0], maxTLEAges[1], MAXTLEB_BPR,
                     "Max allowed satellite TLE age; beware longer will result in larger errors"},
     {4, {400, R2Y(11), 190, PR_H},  {590, R2Y(11), 170, PR_H}, false, NULL,
-                    maxTLEAges[2], maxTLEAges[3], MAXTLEA_BPR},
+                    maxTLEAges[2], maxTLEAges[3], MAXTLEA_BPR, 0},
                                                 // 4x entangled: FF -> TF -> FT -> TT -> ...
 
 
@@ -1062,16 +1061,16 @@ static ColSelPrompt csel_pr[N_CSPR] = {
             {CSEL_COL1X+CSEL_EDX, R2Y(3)+CSEL_TBDY, CSEL_TBSZ, CSEL_TBSZ},
             {CSEL_COL1X, R2Y(3)+CSEL_TBDY, CSEL_TBSZ, CSEL_TBSZ},
             {CSEL_COL1X+CSEL_DDX1, R2Y(3)+CSEL_DDY, CSEL_DW, CSEL_DH},
-            false, true, true, RGB565(175,38,127), NV_SATPATHCOLOR, "Sat path",
+            false, true, true, RGB565(175,38,127), NV_SAT1COLOR, "Satellite 1",
             {CSEL_COL1X+CSEL_ADX, R2Y(3)+CSEL_TBDY, CSEL_TBSZ, CSEL_TBSZ}, false, 0, 0, 0},
 
     {{CSEL_COL1X+CSEL_PDX, R2Y(4), CSEL_PW, PR_H},
             {CSEL_COL1X+CSEL_TDX, R2Y(4)+CSEL_TBDY, CSEL_TBSZ, CSEL_TBSZ},
             {CSEL_COL1X+CSEL_EDX, R2Y(4)+CSEL_TBDY, CSEL_TBSZ, CSEL_TBSZ},
-            {0, 0, 0, 0},                                                       // always on
+            {CSEL_COL1X, R2Y(4)+CSEL_TBDY, CSEL_TBSZ, CSEL_TBSZ},
             {CSEL_COL1X+CSEL_DDX1, R2Y(4)+CSEL_DDY, CSEL_DW, CSEL_DH},
-            false, true, true, RGB565(236,175,79), NV_SATFOOTCOLOR, "Sat footprint",
-            {0, 0, 0, 0}, false, 0, 0, 0},                                      // never dashed
+            false, true, true, RGB565(236,175,79), NV_SAT2COLOR, "Satellite 2",
+            {CSEL_COL1X+CSEL_ADX, R2Y(4)+CSEL_TBDY, CSEL_TBSZ, CSEL_TBSZ}, false, 0, 0, 0},
 
     {{CSEL_COL1X+CSEL_PDX, R2Y(5), CSEL_PW, PR_H},
             {CSEL_COL1X+CSEL_TDX, R2Y(5)+CSEL_TBDY, CSEL_TBSZ, CSEL_TBSZ},

@@ -4064,14 +4064,20 @@ static bool setWiFiScreenLock (WiFiClient &client, char line[], size_t line_len)
  */
 static bool setWiFiLiveSpots (WiFiClient &client, char line[], size_t line_len)
 {
+    // handy names -- N.B. keep in sync!
+    enum {
+        _LS_SPOT, _LS_WHAT, _LS_DATA, _LS_BANDS, _LS_AGE, _LS_SHOW, _LS_PATH
+    };
+
     WebArgs wa;
     wa.nargs = 0;
-    wa.name[wa.nargs++] = "spot";                       // 0
-    wa.name[wa.nargs++] = "what";                       // 1
-    wa.name[wa.nargs++] = "data";                       // 2
-    wa.name[wa.nargs++] = "bands";                      // 3
-    wa.name[wa.nargs++] = "age";                        // 4
-    wa.name[wa.nargs++] = "show";                       // 5
+    wa.name[wa.nargs++] = "spot";
+    wa.name[wa.nargs++] = "what";
+    wa.name[wa.nargs++] = "data";
+    wa.name[wa.nargs++] = "bands";
+    wa.name[wa.nargs++] = "age";
+    wa.name[wa.nargs++] = "show";
+    wa.name[wa.nargs++] = "path";
 
     const char *usage =
         "spot=of|by&what=call|grid&show=maxdist|counts&data=psk|wspr|rbn&age=mins&bands=all|160,...";
@@ -4085,8 +4091,8 @@ static bool setWiFiLiveSpots (WiFiClient &client, char line[], size_t line_len)
     // since components are optional we start with the current mask and modify
     uint8_t new_mask = psk_mask;
 
-    if (wa.found[0]) {
-        const char *spot = wa.value[0];
+    if (wa.found[_LS_SPOT]) {
+        const char *spot = wa.value[_LS_SPOT];
         if (strcmp (spot, "of") == 0)
             new_mask |= PSKMB_OFDE;
         else if (strcmp (spot, "by") == 0)
@@ -4097,8 +4103,8 @@ static bool setWiFiLiveSpots (WiFiClient &client, char line[], size_t line_len)
         }
     }
 
-    if (wa.found[1]) {
-        const char *what = wa.value[1];
+    if (wa.found[_LS_WHAT]) {
+        const char *what = wa.value[_LS_WHAT];
         if (strcmp (what, "call") == 0)
             new_mask |= PSKMB_CALL;
         else if (strcmp (what, "grid") == 0)
@@ -4109,8 +4115,8 @@ static bool setWiFiLiveSpots (WiFiClient &client, char line[], size_t line_len)
         }
     }
 
-    if (wa.found[2]) {
-        const char *data = wa.value[2];
+    if (wa.found[_LS_DATA]) {
+        const char *data = wa.value[_LS_DATA];
         new_mask &= ~PSKMB_SRCMASK;
         if (strcmp (data, "psk") == 0)
             new_mask |= PSKMB_PSK;
@@ -4132,11 +4138,11 @@ static bool setWiFiLiveSpots (WiFiClient &client, char line[], size_t line_len)
 
     // new set of bands, if set
     uint32_t new_bands = 0;
-    if (wa.found[3]) {
+    if (wa.found[_LS_BANDS]) {
         // don't clobber value
-        StackMalloc bands_mem(wa.value[3]);
+        StackMalloc bands_mem(wa.value[_LS_BANDS]);
         char *bands = (char *) bands_mem.getMem();
-        strcpy (bands, wa.value[3]);
+        strcpy (bands, wa.value[_LS_BANDS]);
         if (strcmp (bands, "all") == 0) {
             new_bands = (1 << HAMBAND_N) - 1;
         } else {
@@ -4168,8 +4174,8 @@ static bool setWiFiLiveSpots (WiFiClient &client, char line[], size_t line_len)
 
     // new age, if set
     uint16_t new_age = psk_maxage_mins;
-    if (wa.found[4]) {
-        int age = atoi (wa.value[4]);
+    if (wa.found[_LS_AGE]) {
+        int age = atoi (wa.value[_LS_AGE]);
         if (maxPSKageOk(age))
             new_age = age;
         else {
@@ -4180,10 +4186,10 @@ static bool setWiFiLiveSpots (WiFiClient &client, char line[], size_t line_len)
 
     // change show, if set
     uint8_t new_dist = psk_showdist;
-    if (wa.found[5]) {
-        if (strcmp (wa.value[5], "maxdist") == 0)
+    if (wa.found[_LS_SHOW]) {
+        if (strcmp (wa.value[_LS_SHOW], "maxdist") == 0)
             new_dist = 1;
-        else if (strcmp (wa.value[5], "counts") == 0)
+        else if (strcmp (wa.value[_LS_SHOW], "counts") == 0)
             new_dist = 0;
         else {
             strcpy (line, "show: maxdist or counts");
@@ -4191,9 +4197,22 @@ static bool setWiFiLiveSpots (WiFiClient &client, char line[], size_t line_len)
         }
     }
 
+    // change path, if set
+    uint8_t new_path = psk_showpath;
+    if (wa.found[_LS_PATH]) {
+        if (strcmp (wa.value[_LS_PATH], "on") == 0)
+            new_dist = 1;
+        else if (strcmp (wa.value[_LS_PATH], "off") == 0)
+            new_dist = 0;
+        else {
+            strcpy (line, "path: on or off");
+            return (false);
+        }
+    }
+
     // skip if no changes
     if (psk_mask == new_mask && psk_bands == new_bands && psk_maxage_mins == new_age
-                        && psk_showdist == new_dist) {
+                        && psk_showdist == new_dist && psk_showpath == new_path) {
         strncpy (line, usage, line_len);
         return (false);
     }
@@ -4203,6 +4222,7 @@ static bool setWiFiLiveSpots (WiFiClient &client, char line[], size_t line_len)
     psk_bands = new_bands;
     psk_maxage_mins = new_age;
     psk_showdist = new_dist;
+    psk_showpath = new_path;
     savePSKState();
     scheduleNewPlot(PLOT_CH_PSK);
 
@@ -4897,7 +4917,7 @@ static bool runDemoChoice (DemoChoice choice, bool &slow, char msg[], size_t msg
             } else {
                 // assign new sat by cycling through list
                 static const char *sats[] = {
-                    "ISS", "SO-50", "NOAA 19", "FOX-1B"
+                    "ISS", "SO-50", "FOX-1B"
                 };
                 static int next_sat;
                 next_sat = (next_sat + 1) % NARRAY(sats);

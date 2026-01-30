@@ -30,10 +30,10 @@ LDXXFLAGS = -LArduinoLib -LwsServer -Lzlib-hc -g -pthread
 LIBS = -lpthread -larduino -lzlib-hc -lws
 CXX = g++
 
-# macOS does not have X11 by default; this assumes XQuartz has been installed
+# macOS does not have X11 by default; this assumes XQuartz or macports xorg has been installed
 ifeq ($(shell uname -s), Darwin)
-    CXXFLAGS += -I/opt/X11/include
-    LDXXFLAGS += -L/opt/X11/lib
+    CXXFLAGS += -I/opt/X11/include -I/opt/local/include
+    LDXXFLAGS += -L/opt/X11/lib -L/opt/local/lib
 endif
 
 # check for proper version of gpiod on linux

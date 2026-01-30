@@ -640,7 +640,7 @@ void setup()
     mapscale_b.y = rss_on ? rss_bnr_b.y - mapscale_b.h: map_b.y + map_b.h - mapscale_b.h;
 
     // check for saved satellite
-    dx_info_for_sat = initSatSelection();
+    dx_info_for_sat = initSat();
 
     // prep stopwatch
     initStopwatch();
@@ -867,7 +867,7 @@ static void checkTouch()
             // set flag to draw map menu at next opportunity
             mapmenu_pending = true;
         }
-    } else if (!dx_info_for_sat && checkSatMapTouch (s)) {
+    } else if (checkSatMapTouch (s)) {
         // set showing sat in DX box
         dx_info_for_sat = true;
         drawSatPass();

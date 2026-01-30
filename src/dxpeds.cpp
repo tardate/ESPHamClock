@@ -328,7 +328,7 @@ static void formatDXPed (DXPedEntry &de, const char *loc_line, const char *call_
  * return true if enough changed that a complete update is required, such as changing show_date,
  * else false if ok to just redraw pane without any changes.
  */
-static bool runDXPedPaneMenu (const SCoord &s, const SBox &box)
+static bool runDXPedPaneMenu (const SBox &box)
 {
     // handy mitems[] offset names, sans credit lines
     enum {
@@ -885,7 +885,7 @@ bool checkDXPedsTouch (const SCoord &s, const SBox &box)
 
     } else if (s.y < box.y + START_DY) {
 
-        if (runDXPedPaneMenu (s, box))
+        if (runDXPedPaneMenu (box))
             scheduleNewPlot (PLOT_CH_DXPEDS);
 
         return (true);

@@ -403,7 +403,7 @@ typedef enum {
     NV_WIFI_SSID,               // WIFI SSID
     NV_WIFI_PASSWD_OLD,         // deprecated
     NV_CALLSIGN,                // call 
-    NV_SATNAME,                 // satellite name with underscore for each space
+    NV_SAT1NAME,                // satellite 1 name with underscore for each space
     NV_DE_SRSS,                 // whether DE pane shows sun times 0=until or 1=at
 
     // 40
@@ -444,8 +444,8 @@ typedef enum {
     // 65
     NV_NTPHOST_OLD,             // deprecated in 4.07
     NV_GPIOOK,                  // whether ok to use GPIO pins
-    NV_SATPATHCOLOR,            // satellite path color as RGB 565
-    NV_SATFOOTCOLOR,            // satellite footprint color as RGB 565
+    NV_SAT1COLOR,               // satellite 1 color as RGB 565
+    NV_SAT2COLOR,               // satellite 2 color as RGB 565
     NV_X11FLAGS,                // set if want full screen
 
     // 70
@@ -682,6 +682,8 @@ typedef enum {
     // 235
     NV_MAXTLEAGE,               // max allowed tle age, days
     NV_MINLBLDIST,              // minimum labeling distance
+    NV_SAT2NAME,                // satellite 2 name with underscore for each space
+    NV_PSK_SHOWPATH,            // whether Live Spots show paths
 
     NV_N
 
@@ -693,8 +695,8 @@ typedef enum {
 typedef enum {
     SHORTPATH_CSPR,
     LONGPATH_CSPR,
-    SATPATH_CSPR,
-    SATFOOT_CSPR,
+    SAT1_CSPR,
+    SAT2_CSPR,
     GRID_CSPR,
     ROTATOR_CSPR,
     // N.B. see loadPSKColorTable()
@@ -1835,12 +1837,12 @@ extern bool checkSatMapTouch (const SCoord &s);
 extern bool checkSatNameTouch (const SCoord &s);
 extern void drawSatPass(void);
 extern bool setNewSatCircumstance (void);
-extern void drawSatNameOnRow(uint16_t y);
+extern void drawSatName(void);
 extern void drawOneTimeDX(void);
 extern void drawOneTimeDE(void);
 extern bool setSatFromName (const char *new_name);
 extern bool setSatFromTLE (const char *name, const char *t1, const char *t2);
-extern bool initSatSelection(void);
+extern bool initSat(void);
 extern bool getSatNow (SatNow &satnow);
 extern bool getSatCir (Observer *snow_obs, time_t t0, SatNow &sat_at_t0);
 extern bool isNewPass(void);
@@ -2586,7 +2588,8 @@ typedef struct {
 extern uint8_t psk_mask;                // bitmask of PSKModeBits
 extern uint32_t psk_bands;              // bitmask of 1 << PSKBandSetting
 extern uint16_t psk_maxage_mins;        // max age, minutes
-extern uint8_t psk_showdist;
+extern uint8_t psk_showdist;            // show distances, else counts
+extern uint8_t psk_showpath;            // whether to draw paths
 
 extern bool updatePSKReporter (const SBox &box, bool force);
 extern bool checkPSKTouch (const SCoord &s, const SBox &box);
