@@ -349,10 +349,9 @@ static void runCallsignMenu (void)
                 cs_info.now_showing = cs_info.ct_prefer;
         }
 
+        // full redraw to show changes
+        updateCallsign (true);
     }
-
-    // full redraw if for no other reason than to erase menu
-    updateCallsign (true);
 }
 
 /* called periodically to update callsign.

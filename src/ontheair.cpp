@@ -497,11 +497,6 @@ static void runONTASortMenu (const SBox &box)
         // full refresh
         onta_ss.scrollToNewest();
         scheduleNewPlot (PLOT_CH_ONTA);
-
-    } else {
-
-        // just redraw if cancel
-        drawONTA (box);
     }
 
     // always free the working text

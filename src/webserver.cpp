@@ -879,6 +879,55 @@ static bool getWiFiContests (WiFiClient &client, char *unused_line, size_t line_
 
 }
 
+/* get a user GPIO pin
+ */
+static bool getWiFiGPIO (WiFiClient &client, char line[], size_t line_len)
+{
+    // define all possible args
+    WebArgs wa;
+    wa.nargs = 0;
+    wa.name[wa.nargs++] = "pin";
+    wa.name[wa.nargs++] = "latched";    // optional, false by default
+
+    // parse
+    if (!parseWebCommand (wa, line, line_len))
+        return (false);
+
+    // get pin
+    int pin = 0;
+    if (wa.found[0])
+        pin = atoi (wa.value[0]);
+    else {
+        snprintf (line, line_len, "MCP pin is required");
+        return (false);
+    }
+
+    // get whether latched, default false
+    bool latched = false;
+    if (wa.found[1]) {
+        if (strcasecmp (wa.value[1], "true") == 0)
+            latched = true;
+        else if (strcasecmp (wa.value[1], "false") != 0) {
+            snprintf (line, line_len, "latched true or false");
+            return (false);
+        }
+    }
+
+    // get state
+    Message ynot;
+    bool state;
+    if (!getUserGPIO (pin, latched, state, ynot)) {
+        snprintf (line, line_len, "%s", ynot.get());
+        return (false);
+    }
+
+    // reply with state
+    startPlainText (client);
+    client.println (state ? 1 : 0);
+    return (true);
+}
+
+
 /* remote report current known set of DXpeditions
  */
 static bool getWiFiDXPeds (WiFiClient &client, char *unused_line, size_t line_len)
@@ -1505,6 +1554,11 @@ static bool getWiFiSpaceWx (WiFiClient &client, char *unused_line, size_t line_l
 
     if (space_wx[SPCWX_AURORA].value_ok) {
         snprintf (buf, sizeof(buf), "Aurora    %8.0f\n", space_wx[SPCWX_AURORA].value);
+        client.print (buf);
+    }
+
+    if (space_wx[SPCWX_DST].value_ok) {
+        snprintf (buf, sizeof(buf), "DST       %8.0f\n", space_wx[SPCWX_DST].value);
         client.print (buf);
     }
 
@@ -3668,6 +3722,78 @@ static bool setWiFiTouch (WiFiClient &client, char line[], size_t line_len)
     return (true);
 }
 
+/* set a user GPIO pin
+ *   pin=MCP&level=[hi,lo]&blink=hz
+ */
+static bool setWiFiGPIO (WiFiClient &client, char line[], size_t line_len)
+{
+    enum {
+        SETG_PIN,
+        SETG_LEVEL,
+        SETG_BLINK
+    };
+
+    WebArgs wa;
+    wa.nargs = 0;
+    wa.name[wa.nargs++] = "pin";
+    wa.name[wa.nargs++] = "level";
+    wa.name[wa.nargs++] = "blink";
+
+    // parse
+    if (!parseWebCommand (wa, line, line_len))
+        return (false);
+
+    // get pin
+    int pin = 0;
+    if (wa.found[SETG_PIN])
+        pin = atoi (wa.value[SETG_PIN]);
+    else {
+        snprintf (line, line_len, "MCP pin is required");
+        return (false);
+    }
+
+    // exactly one of level or blink is required
+    if (wa.found[SETG_LEVEL] == wa.found[SETG_BLINK]) {
+        snprintf (line, line_len, "set one of level or blink");
+        return (false);
+    }
+
+    Message ynot;
+
+    // check level
+    if (wa.found[SETG_LEVEL]) {
+        if (strcasecmp (wa.value[SETG_LEVEL], "hi") == 0 || strcmp (wa.value[SETG_LEVEL], "1") == 0) {
+            if (!setUserGPIO (pin, BLINKER_ON, ynot)) {
+                snprintf (line, line_len, "%s", ynot.get());
+                return (false);
+            }
+        } else if (strcasecmp (wa.value[SETG_LEVEL], "lo") == 0 || strcmp (wa.value[SETG_LEVEL], "0") == 0) {
+            if (!setUserGPIO (pin, BLINKER_OFF, ynot)) {
+                snprintf (line, line_len, "%s", ynot.get());
+                return (false);
+            }
+        } else {
+            snprintf (line, line_len, "level must be hi or lo");
+            return (false);
+        }
+    }
+
+    // check blink
+    if (wa.found[SETG_BLINK]) {
+        int hz = atoi (wa.value[SETG_BLINK]);
+        if (!setUserGPIO (pin, hz, ynot)) {
+            snprintf (line, line_len, "%s", ynot.get());
+            return (false);
+        }
+    }
+
+
+    // ack
+    startPlainText (client);
+    client.print("ok\n");
+    return (true);
+}
+
 /* set the VOACAP DE-DX map options
  * return whether all ok.
  */
@@ -4166,6 +4292,7 @@ static const CmdTble command_table[] = {
     { "get_dx.txt ",        getWiFiDXInfo,         "get DX info" },
     { "get_dxpeds.txt ",    getWiFiDXPeds,         "get current list of DXpeditions" },
     { "get_dxspots.txt ",   getWiFiDXSpots,        "get DX spots" },
+    { "get_gpio?",          getWiFiGPIO,           "pin=MCP&latched=[true,false]" }, // params!
     { "get_livespots.txt ", getWiFiLiveSpots,      "get live spots list" },
     { "get_livestats.txt ", getWiFiLiveStats,      "get live spots statistics" },
     { "get_ontheair.txt ",  getWiFiOnTheAir,       "get POTA/SOTA activators" },
@@ -4185,8 +4312,8 @@ static const CmdTble command_table[] = {
     { "set_defmt?",         setWiFiDEformat,       "fmt=[one_from_menu]&atin=RSAtAt|RSInAgo" },
     { "set_displayOnOff?",  setWiFiDisplayOnOff,   "on|off" },
     { "set_displayTimes?",  setWiFiDisplayTimes,   "on=HR:MN&off=HR:MN&day=[Sun..Sat]&idle=mins" },
+    { "set_gpio?",          setWiFiGPIO,           "pin=MCP&level=[hi,lo]&blink=hz" },
     { "set_livespots?",     setWiFiLiveSpots,      "(see error message)" },
-    { "set_screenlock?",    setWiFiScreenLock,     "lock=on|off" },
     { "set_mapcenter?",     setWiFiMapCenter,      "lng=X" },
     { "set_mapcolor?",      setWiFiMapColor,       "setup=name&color=R,G,B" },
     { "set_mapview?",       setWiFiMapView,        "Style=S&Grid=G&Projection=P&RSS=on|off&Night=on|off" },
@@ -4199,6 +4326,7 @@ static const CmdTble command_table[] = {
     { "set_rss?",           setWiFiRSS,            "reset|add=X|network|interval=secs|on|off|file (POST)" },
     { "set_satname?",       setWiFiSatName,        "abc|none" },
     { "set_sattle?",        setWiFiSatTLE,         "name=abc&t1=line1&t2=line2" },
+    { "set_screenlock?",    setWiFiScreenLock,     "lock=on|off" },
     { "set_senscorr?",      setWiFiSensorCorr,     "sensor=76|77&dTemp=X&dPres=Y" },
     { "set_stopwatch?",     setWiFiStopwatch,      "reset|run|stop|lap|countdown=mins" },
     { "set_time?",          setWiFiTime,           "change=delta_seconds" },

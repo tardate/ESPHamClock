@@ -45,6 +45,9 @@ bool crackClusterSpot (char line[], DXSpot &spot)
     tm.Minute = mn;
     spot.spotted = makeTime (tm);
 
+    // spot does not include mode so try to set based on freq
+    quietStrncpy (spot.mode, findHamMode (spot.kHz), sizeof(spot.mode));
+
     // accommodate future from roundoff
     if (spot.spotted > now) {
         dxcLog ("%s %g: correcting future time %02d:%02d %ld > %ld\n", spot.tx_call, spot.kHz,
@@ -326,10 +329,6 @@ bool crackXMLSpot (const char xml[], DXSpot &spot)
         return (false);
     }
 
-    if (!extractXMLElementContent (xml, "mode", spot.mode, sizeof(spot.mode))) {
-        dxcLog ("UDP: ignoring no mode for %s\n", spot.tx_call);
-    }
-
     if (!extractXMLElementContent (xml, "frequency", buf, sizeof(buf))) {
         dxcLog ("UDP: no frequency for %s\n", spot.tx_call);
         return (false);
@@ -337,6 +336,11 @@ bool crackXMLSpot (const char xml[], DXSpot &spot)
     if ( ((spot.kHz = strtod (buf, &endptr)) == 0 && endptr == buf) || findHamBand(spot.kHz) == HAMBAND_NONE){
         dxcLog ("UDP: bogus frequency %s for %s\n", buf, spot.tx_call);
         return (false);
+    }
+
+    if (!extractXMLElementContent (xml, "mode", spot.mode, sizeof(spot.mode))) {
+        quietStrncpy (spot.mode, findHamMode (spot.kHz), sizeof(spot.mode));
+        dxcLog ("UDP: inferring mode for %s %s\n", spot.tx_call, spot.mode);
     }
 
     if (!extractXMLElementContent (xml, "timestamp", buf, sizeof(buf))) {
@@ -350,7 +354,7 @@ bool crackXMLSpot (const char xml[], DXSpot &spot)
 
 
     if (!call2LL (spot.tx_call, spot.tx_ll)) {
-        dxcLog ("UDP: could find LL for %s\n", spot.tx_call);
+        dxcLog ("UDP: could not find LL for %s\n", spot.tx_call);
         return (false);
     }
     ll2maidenhead (spot.tx_grid, spot.tx_ll);

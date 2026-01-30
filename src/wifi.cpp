@@ -1508,6 +1508,38 @@ static bool updateKp(const SBox &box)
     return (ok);
 }
 
+/* retrieve and plot latest and predicted DST indices, return whether io ok
+ */
+static bool updateDST(const SBox &box)
+{
+    DSTData dst;
+
+    bool ok = retrieveDST (dst);
+
+    updateClocks(false);
+
+    if (ok) {
+
+        if (!dst.data_ok) {
+            plotMessage (box, DST_COLOR, "DST data invalid");
+        } else {
+            // plot
+            plotXY (box, dst.age_hrs, dst.values, DST_NV, "Hours", "Dist Storm Time, nT", DST_COLOR, 0, 0,
+                                                                                space_wx[SPCWX_DST].value);
+        }
+
+        // update NCDXF box too either way
+        if (brb_mode == BRB_SHOW_SWSTATS)
+            drawNCDXFSpcWxStats(RA8875_BLACK);
+
+    } else {
+        plotMessage (box, DST_COLOR, "DST connection failed");
+    }
+
+    // done
+    return (ok);
+}
+
 /* retrieve and plot latest xray indices, return whether io ok
  */
 static bool updateXRay(const SBox &box)
@@ -2257,6 +2289,15 @@ void updateWiFi(void)
                     next_update[pp] = nextPaneUpdate (pc, DXPEDS_INTERVAL);
                     fresh_redraw[pc] = false;
                 } else
+                    next_update[pp] = nextWiFiRetry(pc);
+            }
+            break;
+
+        case PLOT_CH_DST:
+            if (t0 >= next_update[pp]) {
+                if (updateDST(box))
+                    next_update[pp] = nextPaneUpdate (pc, DST_INTERVAL);
+                else
                     next_update[pp] = nextWiFiRetry(pc);
             }
             break;

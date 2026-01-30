@@ -449,19 +449,15 @@ bool askNewPos (const SBox &b, LatLong &op_ll, char op_grid[MAID_CHARLEN])
     char new_grid[MAID_CHARLEN];
     memset (&new_ll, 0, sizeof(new_ll));
     memset (new_grid, 0, sizeof(new_grid));
-    SCoord s;
-    char kbc;
     UserInput ui = {
         b,
         UI_UFuncNone,
         UF_UNUSED,
         NP_TIMEOUT,
         UF_NOCLOCKS,
-        s,
-        kbc,
-        false,
-        false
+        {0, 0}, TT_NONE, '\0', false, false
     };
+
     do {
 
         // always fresh
@@ -472,14 +468,13 @@ bool askNewPos (const SBox &b, LatLong &op_ll, char op_grid[MAID_CHARLEN])
         NPFieldName focus_fn = (NPFieldName)(focus_fp - fields);
 
         // wait for user to do something or time out
-        if (!waitForUser(ui) || kbc == CHAR_ESC || (kbc == CHAR_NONE && !inBox (s, b))) {
+        if (!waitForUser(ui) || ui.kb_char == CHAR_ESC || (ui.kb_char == CHAR_NONE && !inBox (ui.tap, b))) {
             cancelled = true;
             continue;
         }
 
         // see what happened
-        int tap = processNPTap (kbc, focus_fn, b, s);
-        // Serial.printf ("ask %d %c\n", tap, isalnum(tap) ? tap : '*');
+        int tap = processNPTap (ui.kb_char, focus_fn, b, ui.tap);
 
         // update action
         switch (tap) {

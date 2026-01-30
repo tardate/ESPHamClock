@@ -711,8 +711,15 @@ bool ll2Prefix (const LatLong &ll, char prefix[MAX_PREF_LEN])
  * if nothing looks like a dx portion then copy call to both.
  * N.B. we assume call has already been cleaned with strtrim() and strtoupper()
  */
-void splitCallSign (const char *call, char home_call[NV_CALLSIGN_LEN], char dx_call[NV_CALLSIGN_LEN])
+void splitCallSign (const char *raw_call, char home_call[NV_CALLSIGN_LEN], char dx_call[NV_CALLSIGN_LEN])
 {
+    // work with copy so we can remove any trailing -# from RBN
+    char call[NV_CALLSIGN_LEN];
+    quietStrncpy (call, raw_call, sizeof(call));
+    char *dash_pound = strstr (call, "-#");
+    if (dash_pound)
+        *dash_pound = '\0';
+
     // split at slash, if any
     const char *slash = strchr (call, '/');
 

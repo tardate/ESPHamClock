@@ -1187,13 +1187,13 @@ static void runNCDXFMenu (void)
             // update on/off times if now used
             if (brb_mode == BRB_SHOW_ONOFF)
                 getPersistentOnOffTimes (DEWeekday(), mins_on, mins_off);
+
+            // immediate redraw
+            brb_next_update = 0;
+
+            // save
+            NVWriteUInt16 (NV_BRB_ROTSET, brb_rotset);
         }
-
-        // immediate redraw even if no change in order to erase menu
-        brb_next_update = 0;
-
-        // save
-        NVWriteUInt16 (NV_BRB_ROTSET, brb_rotset);
 }
 
 /* perform proper action given s known to be within NCDXF_b.

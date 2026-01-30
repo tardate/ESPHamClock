@@ -740,7 +740,8 @@ typedef enum {
     X(PLOT_CH_ONTA,         "On_The_Air")       \
     X(PLOT_CH_ADIF,         "ADIF")             \
     X(PLOT_CH_AURORA,       "Aurora")           \
-    X(PLOT_CH_DXPEDS,       "DXPeditions")      
+    X(PLOT_CH_DXPEDS,       "DXPeditions")      \
+    X(PLOT_CH_DST,          "DistStormTm")
 
 #define X(a,b)  a,              // expands PLOTNAMES to each enum and comma
 typedef enum {
@@ -1133,7 +1134,7 @@ extern bool recalBMEPres (BMEIndex device, float new_corr);
  */
 
 extern bool newVersionIsAvailable (char *nv, uint16_t nvl);
-extern bool askOTAupdate(char *ver, bool init_yes);
+extern bool askOTAupdate(char *new_ver, bool show_pending, bool def_yes);
 extern void doOTAupdate(const char *ver);
 
 
@@ -1228,21 +1229,28 @@ extern void getLunarRS (const time_t t0, const LatLong &ll, time_t *riset, time_
  */
 
 
+/* consolidated list of supported bands
+ */
+#define SUPPORTED_BANDS                                 \
+    X(HAMBAND_160M, 160, "160",  90, BAND160_CSPR)      \
+    X(HAMBAND_80M,   80,  "80",  82, BAND80_CSPR)       \
+    X(HAMBAND_60M,   60,  "60",  77, BAND60_CSPR)       \
+    X(HAMBAND_40M,   40,  "40",  70, BAND40_CSPR)       \
+    X(HAMBAND_30M,   30,  "30",  62, BAND30_CSPR)       \
+    X(HAMBAND_20M,   20,  "20",  51, BAND20_CSPR)       \
+    X(HAMBAND_17M,   17,  "17",  43, BAND17_CSPR)       \
+    X(HAMBAND_15M,   15,  "15",  34, BAND15_CSPR)       \
+    X(HAMBAND_12M,   12,  "12",  25, BAND12_CSPR)       \
+    X(HAMBAND_10M,   10,  "10",  12, BAND10_CSPR)       \
+    X(HAMBAND_6M,     6,   "6",   4, BAND6_CSPR)        \
+    X(HAMBAND_2M,     2,   "2",   0, BAND2_CSPR)
+
+#define X(a,b,c,d,e) a,                         // expands SUPPORTED_BANDS to each enum and comma
 typedef enum {
-    HAMBAND_160M,
-    HAMBAND_80M,
-    HAMBAND_60M,
-    HAMBAND_40M,
-    HAMBAND_30M,
-    HAMBAND_20M,
-    HAMBAND_17M,
-    HAMBAND_15M,
-    HAMBAND_12M,
-    HAMBAND_10M,
-    HAMBAND_6M,
-    HAMBAND_2M,
+    SUPPORTED_BANDS
     HAMBAND_N
 } HamBandSetting;
+#undef X
 
 #define HAMBAND_NONE HAMBAND_N                  // handy impossible alias
 
@@ -1252,6 +1260,8 @@ extern HamBandSetting findHamBand (int meters);
 extern ColorSelection findColSel (HamBandSetting h);
 extern const char *findBandName (HamBandSetting h);
 extern bool isValidSubBand (const char *mode);
+extern const char *findHamMode (float kHz);
+
 
 
 
@@ -1265,32 +1275,22 @@ extern bool isValidSubBand (const char *mode);
  *
  */
 
-#define BLINKER_OFF_HZ  (-1)    // special hz to mean constant off
-#define BLINKER_ON_HZ   0       // speacial hz to mean constant on
+// special rate cookies
+#define BLINKER_OFF     (-10)           // special hz to mean constant off
+#define BLINKER_ON      (-11)           // special hz to mean constant on, 0 ok since rate can not be zero
+#define BLINKER_UNKNOWN (-12)           // special hz to mean unknown state
 
-typedef struct {
-    int pin;                    // pin number
-    int hz;                     // blink rate or one of BLINKER_*
-    bool on_is_low;             // whether "on" means drive LOW
-    bool started;               // set when an attempt was made to start the service
-    bool disable;               // set to stop the thread
-} ThreadBlinker;
 
-extern void startBinkerThread (volatile ThreadBlinker &tb, int pin, bool on_is_low);
-extern void setBlinkerRate (volatile ThreadBlinker &tb, int hz);
-extern void disableBlinker (volatile ThreadBlinker &tb);
+extern void startBinkerThread (int pin, bool on_is_low);
+extern void setBlinkerRate (int pin, int hz);
+extern void disableBlinker (int pin);
 
-typedef struct {
-    int pin;                    // pin number
-    int hz;                     // blink rate or one of BLINKER_*
-    bool started;               // set when an attempt was made to start the service
-    bool disable;               // set to stop the thread
-    bool value;                 // latest value
-} MCPPoller;
+extern void startMCPPoller (int pin);
+extern void disableMCPPoller (int pin);
+extern bool readMCPPoller (int pin);
+extern bool setUserGPIO (int pin, int hz, Message &ynot);
+extern bool getUserGPIO (int pin, bool latched, bool &state, Message &ynot);
 
-extern void startMCPPoller (volatile MCPPoller &mp, int pin, int hz);
-extern void disableMCPPoller (volatile MCPPoller &mp);
-extern bool readMCPPoller (volatile const MCPPoller &mp);
 
 
 
@@ -1604,11 +1604,24 @@ extern void addDXPedsWorked (const DXSpot &s);
 extern void resetDXPedsWorked (void);
 extern int findDXPedsWorked (const DXPedEntry *dxp, DXPedsWorked *&worked);
 extern bool findDXPedsCall (const DXSpot *sp);
+extern bool dxpedsWatchingCluster(void);
 
 
-extern bool dxpeds_watch_cluster;
 
 
+
+
+/*********************************************************************************************
+ *
+ * dxpeds_hide.cpp
+ *
+ */
+
+extern bool isDXPedsHidden (const char *line);
+extern bool isDXPedsHidden (const DXPedEntry *dxp);
+extern int nDXPedsHidden (void);
+extern void addDXPedsHidden (const DXPedEntry *dxp);
+extern void rmDXPedsHidden (const DXPedEntry *dxp);
 
 
 
@@ -1660,6 +1673,7 @@ extern uint8_t show_lp;                 // show prop long path, else short path
 #define DEAP_R 6                        // radius of DE antipodal marker (erases better if even)
 #define DE_COLOR  RGB565(255,125,0)     // orange
 
+extern uint16_t EARTH_GRIDC, EARTH_GRIDC00;
 
 extern SCircle de_c;
 extern LatLong de_ll;
@@ -1864,6 +1878,18 @@ extern time_t crackISO8601 (const char *iso);
  */
 
 extern void plotGrayline(void);
+
+
+
+
+/*********************************************************************************************
+ *
+ * infobox.cpp
+ *
+ */
+
+extern void drawInfoBox(void);
+
 
 
 
@@ -2145,8 +2171,9 @@ typedef struct {
     UI_UFRet fp_true;           // whether fp returned true, or UF_UNUSED
     uint32_t to_ms;             // timeout, msec, or UI_NOTIMEOUT
     UI_UFClock update_clocks;   // whether to update clocks while waiting
-    SCoord &tap;                // tapped location unless ..
-    char &kb_char;              // keyboard input char code or CHAR_NONE if tap
+    SCoord tap;                 // tapped location and ..
+    TouchType tt;               // what type of touch, if any or
+    char kb_char;               // keyboard input char code or CHAR_NONE if tap
     bool kb_ctrl, kb_shift;     // whether kb_char was accommpanied by modifier keys
 } UserInput;
 
@@ -2619,13 +2646,56 @@ extern void drawSatTool (void);
 
 
 
+
 /*********************************************************************************************
  *
- * scroll.cpp
+ * scrollbar.cpp
  *
  */
 
-/* info and methods to control scrolling
+/* info and methods for a vertical scroll bar
+ */
+class ScrollBar {
+
+    public:
+
+        void init (int mv, int nd, SBox &b);
+        bool checkTouch (char kb, SCoord &s);
+        int getTop(void) {return (top_vis); };
+
+    private:
+
+        int max_vis;
+        int top_vis;
+        int n_data;
+        SBox *sc_bp;                    // user's overall box
+        SBox up_b, dw_b, trough_b;      // internal control surfaces
+
+        bool okToScrollDown (void) { return (top_vis + max_vis < n_data); }
+        bool okToScrollUp (void) {return (top_vis > 0); }
+        void scrollUp();
+        void scrollDown();
+        void draw();
+
+        bool canScrollUp(void);
+        bool canScrollDw(void);
+
+        const uint16_t fg = RA8875_WHITE;
+        const uint16_t ARROW_GAP = 4;
+        const uint16_t THUMB_GAP = 2;
+};
+
+
+
+
+
+/*********************************************************************************************
+ *
+ * scrollstate.cpp
+ *
+ */
+
+/* info and methods to control scrolling with up/down buttons
  */
 class ScrollState {
 
@@ -2836,8 +2906,7 @@ extern bool UDPSetsDX(void);
 extern bool useUDPSpot (const DXSpot &s);
 extern bool autoUpgrade (int &at_hour);
 
-
-
+extern void drawToolTipReminder(void);
 
 // how to display a spot after checking whether it is on a watchlist
 typedef enum {
@@ -2927,13 +2996,13 @@ extern void drawDigit (const SBox &b, int digit, uint16_t lt, uint16_t bg, uint1
 
 
 // sunspot info, new data posted daily
-#define SSN_INTERVAL            (3400)                  // polling interval, secs
+#define SSN_INTERVAL            (2400)                  // polling interval, secs
 #define SSN_COLOR               RA8875_CYAN             // plot and history color
 #define SSN_NV                  31                      // n ssn to plot, 1 per day back 30 days, including 0
 
 // solar flux info, new data posted three times a day
 #define SFLUX_NV                99                      // n solar flux values, three per day for 33 days
-#define SFLUX_INTERVAL          (3300)                  // polling interval, secs
+#define SFLUX_INTERVAL          (2300)                  // polling interval, secs
 #define SFLUX_COLOR             RA8875_GREEN            // plot and history color
 
 
@@ -2949,7 +3018,7 @@ extern void drawDigit (const SBox &b, int digit, uint16_t lt, uint16_t bg, uint1
 
 
 // kp historical and predicted info, new data posted every 3 hours
-#define KP_INTERVAL             (3500)                  // polling period, secs
+#define KP_INTERVAL             (2500)                  // polling period, secs
 #define KP_COLOR                RA8875_YELLOW           // loading message text color
 #define KP_VPD                  8                       // number of values per day
 #define KP_NHD                  7                       // N historical days
@@ -2965,7 +3034,7 @@ extern void drawDigit (const SBox &b, int digit, uint16_t lt, uint16_t bg, uint1
 
 
 // space weather pane update intervals
-#define NOAASPW_INTERVAL        (3400)                  // polling interval, secs
+#define NOAASPW_INTERVAL        (2400)                  // polling interval, secs
 #define NOAASPW_COLOR           RGB565(154,205,210)     // plotting color
 
 // aurora info
@@ -2976,25 +3045,33 @@ extern void drawDigit (const SBox &b, int digit, uint16_t lt, uint16_t bg, uint1
 #define AURORA_AUTOMAP_ON       50.0F                   // automap on threshold, percent
 #define AURORA_AUTOMAP_OFF      25.0F                   // automap off threshold, percent
 
+// DST info
+#define DST_INTERVAL            (1900)                  // interval, seconds
+#define DST_COLOR               RGB565(184,134,11)      // plot color
+#define DST_NV                  (24)                    // every hour for 24 hours
+#define DST_MAXAGE              (24.0F)                 // max age to plot, hours
+
 // clouds info
-#define CLOUDS_INTERVAL         3000                    // cloud map interval, seconds
+#define CLOUDS_INTERVAL         2000                    // cloud map interval, seconds
 
 
 /* consolidated space weather enum and stats. #define X to extract desired components.
  * N.B. max name chars NCDXF_B_MAXLEN-1
+ * N.B. set rank of four [0,3] then set the rest to 9.
  */
-#define SPCWX_DATA                                                     \
-    X("SSN",      SPCWX_SSN,      PLOT_CH_SSN,     0, false, 9, 1, 0)  \
-    X("X-Ray",    SPCWX_XRAY,     PLOT_CH_XRAY,    0, false, 1, 1, 0)  \
-    X("SFI",      SPCWX_FLUX,     PLOT_CH_FLUX,    0, false, 0, 1, 0)  \
-    X("Kp",       SPCWX_KP,       PLOT_CH_KP,      0, false, 2, 1, 0)  \
-    X("Sol Wind", SPCWX_SOLWIND,  PLOT_CH_SOLWIND, 0, false, 9, 1, 0)  \
-    X("DRAP",     SPCWX_DRAP,     PLOT_CH_DRAP,    0, false, 9, 1, 0)  \
-    X("Bz",       SPCWX_BZ,       PLOT_CH_BZBT,    0, false, 3, 1, 0)  \
-    X("NOAA SpW", SPCWX_NOAASPW,  PLOT_CH_NOAASPW, 0, false, 9, 1, 0)  /* value will be max noaa_sw.val[] */ \
-    X("Aurora",   SPCWX_AURORA,   PLOT_CH_AURORA,  0, false, 9, 1, 0)
+#define SPCWX_DATA                                                        \
+    X("SSN",      SPCWX_SSN,      PLOT_CH_SSN,     0, false, 9, 0, 1, 0)  \
+    X("X-Ray",    SPCWX_XRAY,     PLOT_CH_XRAY,    0, false, 1, 0, 1, 0)  \
+    X("SFI",      SPCWX_FLUX,     PLOT_CH_FLUX,    0, false, 0, 0, 1, 0)  \
+    X("Kp",       SPCWX_KP,       PLOT_CH_KP,      0, false, 2, 0, 1, 0)  \
+    X("Sol Wind", SPCWX_SOLWIND,  PLOT_CH_SOLWIND, 0, false, 9, 0, 1, 0)  \
+    X("DRAP",     SPCWX_DRAP,     PLOT_CH_DRAP,    0, false, 9, 0, 1, 0)  \
+    X("Bz",       SPCWX_BZ,       PLOT_CH_BZBT,    0, false, 3, 0, 1, 0)  \
+    X("NOAA SpW", SPCWX_NOAASPW,  PLOT_CH_NOAASPW, 0, false, 9, 0, 1, 0)  /* value = max noaa_sw.val[] */ \
+    X("Aurora",   SPCWX_AURORA,   PLOT_CH_AURORA,  0, false, 9, 0, 1, 0)  \
+    X("DST",      SPCWX_DST,      PLOT_CH_DST,     0, false, 9, 0, 1, 0)
 
-#define X(a,b,c,d,e,f,g,h) b,                   // expands SPCWX_DATA to each enum and comma
+#define X(a,b,c,d,e,f,g,h,i) b,                 // expands SPCWX_DATA to each enum and comma
 typedef enum {
     SPCWX_DATA
     SPCWX_N
@@ -3010,7 +3087,7 @@ typedef struct {
     float value;                                // current value
     bool value_ok;                              // whether value is valid
     int rank;                                   // display order after sorting for NCDXF, 0 is best
-    float m, b;                                 // slope and intercept to convert value when finding rank
+    float a, b, c;                              // ax^2 + bx + c to convert value when finding rank
 } SpaceWeather_t;
 
 extern SpaceWeather_t space_wx[SPCWX_N];
@@ -3087,6 +3164,14 @@ typedef struct {
     int n_points;                               // n points defined
 } AuroraData;
 
+typedef struct {
+    time_t next_update;                         // when to try to get new data
+    bool data_ok;                               // set when data are known good
+    float age_hrs[DST_NV];                      // negative age "hours ago", oldest first
+    float values[DST_NV];                       // values
+    int n_points;                               // n points defined
+} DSTData;
+
 extern bool retrieveBzBt (BzBtData &bzbt);
 extern bool retrieveSolarWind(SolarWindData &sw);
 extern bool retrieveSunSpots (SunSpotData &ssn);
@@ -3094,8 +3179,9 @@ extern bool retrieveSolarFlux (SolarFluxData &sf);
 extern bool retrieveDRAP (DRAPData &drap);
 extern bool retrieveXRay (XRayData &xray);
 extern bool retrieveKp (KpData &kp);
-extern bool retrieveNOAASWx(NOAASpaceWxData &noaa);
-extern bool retrieveAurora(AuroraData &a);
+extern bool retrieveNOAASWx (NOAASpaceWxData &noaa);
+extern bool retrieveAurora (AuroraData &a);
+extern bool retrieveDST (DSTData &a);
 
 extern void doNCDXFSpcWxTouch (const SCoord &s);
 extern void drawNCDXFSpcWxStats(uint16_t color);
@@ -3258,6 +3344,19 @@ extern bool strHasSpace (const char *s);
 extern void strncpySubChar (char to_str[], const char from_str[], char to_char, char from_char, int to_len);
 
 
+
+
+
+
+
+
+/*********************************************************************************************
+ *
+ * tooltip.cpp
+ *
+ */
+
+void tooltip (const SCoord &s, const char *tip);
 
 
 

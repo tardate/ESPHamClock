@@ -125,6 +125,7 @@ bool plotChoiceIsAvailable (PlotChoice pc)
     case PLOT_CH_ONTA:          // fallthru
     case PLOT_CH_AURORA:        // fallthru
     case PLOT_CH_DXPEDS:        // fallthru
+    case PLOT_CH_DST:           // fallthru
         return (true);
 
     case PLOT_CH_N:
@@ -517,13 +518,10 @@ bool checkPlotTouch (const SCoord &s, PlotPane pp)
         drawDEFormatMenu();
     } else {
 
+        // ask for new set, engage if change current
         PlotChoice pc = askPaneChoice(pp);
-
-        // always engage even if same to erase menu
-        if (!setPlotChoice (pp, pc)) {
+        if (pc != plot_ch[pp] && !setPlotChoice (pp, pc))
             fatalError ("checkPlotTouch bad choice %d pane %d", (int)pc, (int)pp);
-            // never returns
-        }
     }
 
     // it was ours

@@ -571,11 +571,6 @@ bool checkPSKTouch (const SCoord &s, const SBox &box)
             // refresh with new criteria
             updatePSKReporter (box, true);
         }
-
-    } else  {
-
-        // just restore current settings
-        drawPSKPane(box);
     }
 
     // ours alright

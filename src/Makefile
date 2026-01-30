@@ -72,6 +72,7 @@ OBJS = \
 	drawextra.o \
 	dxcluster.o \
 	dxpeds.o \
+	dxpeds_hide.o \
 	earthmap.o \
 	earthsat.o \
 	emetool.o \
@@ -81,6 +82,7 @@ OBJS = \
 	gpsd.o \
 	grayline.o \
 	kd3tree.o \
+	infobox.o \
 	liveweb.o \
 	liveweb-html.o \
 	magdecl.o \
@@ -107,7 +109,8 @@ OBJS = \
 	runner.o \
 	santa.o \
 	sattool.o \
-	scroll.o \
+	scrollbar.o \
+	scrollstate.o \
 	sdo.o \
 	selectFont.o \
 	setup.o \
@@ -117,6 +120,7 @@ OBJS = \
 	spots.o \
 	stopwatch.o \
 	string.o \
+	tooltip.o \
 	touch.o \
 	tz.o \
 	version.o \

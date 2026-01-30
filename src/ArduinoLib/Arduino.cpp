@@ -107,6 +107,11 @@ long random(int max)
         return ((::random() >> 3) % max);
 }
 
+void randomSeed (int s)
+{
+    ::srandom(s);
+}
+
 uint16_t analogRead(int pin)
 {
         (void) pin;
@@ -616,7 +621,8 @@ int main (int ac, char *av[])
         // save our args for restart or remote update
 	our_argv = av;
 
-        // always want stdout synchronous 
+        // always want stdout immediate and allow for multiple processes writing
+        fcntl (1, F_SETFL, fcntl (1, F_GETFL, 0) | O_APPEND);
         setbuf (stdout, NULL);
 
         // check args

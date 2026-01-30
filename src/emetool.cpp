@@ -412,24 +412,19 @@ void drawEMETool()
         SBox popup_b = {0,0,0,0};
 
         // report info for tap times until time out or tap Resume button
-        SCoord s;
-        char c;
         UserInput ui = {
             map_b,
             UI_UFuncNone,
             UF_UNUSED,
             MP_TO,
             UF_CLOCKSOK,
-            s,
-            c,
-            false,
-            false
+            {0, 0}, TT_NONE, '\0', false, false
         };
         while (waitForUser(ui)) {
 
             // done if return, esc or tap Resume button or tap outside box
-            if (c == CHAR_CR || c == CHAR_NL || c == CHAR_ESC || inBox (s, resume_b) || 
-                                                    (c == CHAR_NONE && !inBox (s, map_b)))
+            if (ui.kb_char == CHAR_CR || ui.kb_char == CHAR_NL || ui.kb_char == CHAR_ESC
+                        || inBox (ui.tap, resume_b) || (ui.kb_char == CHAR_NONE && !inBox (ui.tap, map_b)))
                 break;
 
             // first erase previous popup, if any
@@ -442,14 +437,12 @@ void drawEMETool()
             }
 
             // show new popup if tap within the plot area but outside previous popup
-            if (s.x > MP_X0 && s.x < MP_X0 + MP_PW && s.y > MP_E2Y(M_PI_2F) && s.y < MP_E2Y(-M_PI_2F)
-                                && (!popup_was_up || !inBox (s, popup_b))) {
-
-                resetWatchdog();
+            if (ui.tap.x > MP_X0 && ui.tap.x < MP_X0 + MP_PW && ui.tap.y > MP_E2Y(M_PI_2F)
+                        && ui.tap.y < MP_E2Y(-M_PI_2F) && (!popup_was_up || !inBox (ui.tap, popup_b))) {
 
                 // popup at s
-                popup_b.x = s.x;
-                popup_b.y = s.y;
+                popup_b.x = ui.tap.x;
+                popup_b.y = ui.tap.y;
                 popup_b.w = 122;
                 popup_b.h = 45;
 
@@ -460,7 +453,7 @@ void drawEMETool()
                     popup_b.y = MP_E2Y(-M_PI_2F) - MP_MT - popup_b.h;
 
                 // draw popup
-                drawMPPopup (MP_X2T(s.x), popup_b);
+                drawMPPopup (MP_X2T(ui.tap.x), popup_b);
 
                 // update popup state
                 popup_was_up = popup_is_up;

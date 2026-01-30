@@ -11,11 +11,14 @@
 bool dx_info_for_sat;                   // global to indicate whether dx_info_b is for DX info or sat info
 
 // path drawing
-#define MAX_PATH        512             // N.B. MAX_PATH must be a power of 2 for dashed lines to work right
-#define FOOT_ALT0       250
-#define FOOT_ALT30      100
-#define FOOT_ALT60      75
+#define MAX_PATHPTS     512             // N.B. MAX_PATHPTS must be power of 2 for dashed lines to work right
+#define FOOT_ALT0       250             // n points in altitude 0 foot print
+#define FOOT_ALT30      100             // n points in altitude 30 foot print
+#define FOOT_ALT60      75              // n points in altitude 60 foot print
 #define N_FOOT          3               // number of footprint altitude loci
+#define ARROW_N         25              // n arrows
+#define ARROW_EVERY     (MAX_PATHPTS/ARROW_N)   // one arrow every these many steps
+#define ARROW_L         (10*tft.SCALESZ)        // arrow length, raw pixels
 
 
 // config
@@ -84,27 +87,23 @@ static void fatalSatError (const char *fmt, ...);
 #endif
 
 
-/* info to manage the blinker thread
- */
-static volatile ThreadBlinker sat_blinker;
 
 /* return all IO pins to quiescent state
  */
 void satResetIO()
 {
-    disableBlinker (sat_blinker);
-    mcp.pinMode (SATALARM_PIN, INPUT);
+    disableBlinker (SATALARM_PIN);
 }
 
 /* set alarm SATALARM_PIN flashing with the given frequency or one of BLINKER_*.
  */
 static void risetAlarm (int hz)
 {
-    // tell helper thread what we want done
-    setBlinkerRate (sat_blinker, hz);
-
     // insure helper thread is running
-    startBinkerThread (sat_blinker, SATALARM_PIN, false); // on is hi
+    startBinkerThread (SATALARM_PIN, false); // on is hi
+
+    // tell helper thread what we want done
+    setBlinkerRate (SATALARM_PIN, hz);
 }
 
 
@@ -134,7 +133,7 @@ static void unsetSat()
     NVWriteString (NV_SATNAME, sat_name);
     dx_info_for_sat = false;
 
-    risetAlarm (BLINKER_OFF_HZ);
+    risetAlarm (BLINKER_OFF);
 }
 
 /* fill sat_foot with loci of points that see the sat at various viewing altitudes.
@@ -313,7 +312,6 @@ static void findNextPass(const char *name, time_t t, SatRiseSet &rs)
  */
 static void drawSatSkyDome()
 {
-
     // size and center of screen path
     uint16_t r0 = satpass_c.r;
     uint16_t xc = satpass_c.s.x;
@@ -601,12 +599,12 @@ static void drawSatTime (bool force, const char *label, uint16_t color, float dt
 
     // layout
     const uint16_t fast_h = 12;                                 // spacing for FAST_FONT
-    const uint16_t rs_y = dx_info_b.y+FONT_H + 6;               // below name
+    const uint16_t rs_y = dx_info_b.y+FONT_H + 9;               // below name
     const uint16_t azel_y = rs_y + fast_h;
 
     // erase drawing area
-    tft.fillRect (dx_info_b.x+1, rs_y, dx_info_b.w-2, 2*fast_h, RA8875_BLACK);
-    // tft.drawRect (dx_info_b.x+1, rs_y, dx_info_b.w-2, 2*fast_h, RA8875_RED);    // RBF
+    tft.fillRect (dx_info_b.x+1, rs_y-3, dx_info_b.w-2, 2*fast_h, RA8875_BLACK);
+    // tft.drawRect (dx_info_b.x+1, rs_y-3, dx_info_b.w-2, 2*fast_h, RA8875_RED);    // RBF
     tft.setTextColor (color);
 
     // draw
@@ -701,18 +699,13 @@ static void fatalSatError (const char *fmt, ...)
     drawStringInBox (button_msg, ok_b, false, RA8875_WHITE);
 
     // wait forever for user to do anything
-    SCoord s;
-    char c;
     UserInput ui = {
         ok_b,
         UI_UFuncNone,
         UF_UNUSED,
         UI_NOTIMEOUT,
         UF_NOCLOCKS,
-        s,
-        c,
-        false,
-        false,
+        {0, 0}, TT_NONE, '\0', false, false
     };
     (void) waitForUser (ui);
 
@@ -874,18 +867,13 @@ static bool askSat()
     screen_b.h = tft.height();
 
     // prep for user input (way up here to avoid goto warnings)
-    SCoord tap_s;
-    char typed_c;
     UserInput ui = {
         screen_b,
         UI_UFuncNone,
         UF_UNUSED,
         MENU_TO,
         UF_NOCLOCKS,
-        tap_s,
-        typed_c,
-        false,
-        false,
+        {0, 0}, TT_NONE, '\0', false, false
     };
 
     // init selected item to none, might be set while drawing the matrix
@@ -1045,51 +1033,51 @@ static bool askSat()
     while (waitForUser (ui)) {
 
         // tap Ok button or type Enter or ESC
-        if (typed_c == CHAR_CR || typed_c == CHAR_NL || typed_c == CHAR_ESC || inBox (tap_s, ok_b)) {
+        if (ui.kb_char == CHAR_CR || ui.kb_char == CHAR_NL || ui.kb_char == CHAR_ESC || inBox (ui.tap, ok_b)){
             // show Ok button highlighted
             drawStringInBox ("Ok", ok_b, true, RA8875_WHITE);
             goto out;
         }
 
         // handle a typed direction key
-        if (typed_c) {
+        if (ui.kb_char) {
             if (sel_idx != NO_SAT) {
                 // act wrt current selection
-                tap_s = sel_s;
-                switch (typed_c) {
-                case 'h': tap_s.x -= CELL_W; break;
-                case 'j': tap_s.y += CELL_H; break;
-                case 'k': tap_s.y -= CELL_H; break;
-                case 'l': tap_s.x += CELL_W; break;
+                ui.tap = sel_s;
+                switch (ui.kb_char) {
+                case 'h': ui.tap.x -= CELL_W; break;
+                case 'j': ui.tap.y += CELL_H; break;
+                case 'k': ui.tap.y -= CELL_H; break;
+                case 'l': ui.tap.x += CELL_W; break;
                 case ' ': break;        // toggle this entry
                 default:  continue;     // ignore
                 }
             } else if (prev_sel_idx != NO_SAT) {
                 // nothing selected now but there was a previous selection
-                tap_s.x = (prev_sel_idx / N_ROWS) * CELL_W;
-                tap_s.y = TBORDER + (prev_sel_idx % N_ROWS) * CELL_H;
+                ui.tap.x = (prev_sel_idx / N_ROWS) * CELL_W;
+                ui.tap.y = TBORDER + (prev_sel_idx % N_ROWS) * CELL_H;
             } else {
                 // first time and nothing selected, start in first cell
-                tap_s.x = 0;
-                tap_s.y = TBORDER;
+                ui.tap.x = 0;
+                ui.tap.y = TBORDER;
             }
         }
 
         // ignore if outside or beyond the matrix
-        int r = (tap_s.y - TBORDER)/CELL_H;
-        int c = tap_s.x/CELL_W;
+        int r = (ui.tap.y - TBORDER)/CELL_H;
+        int c = ui.tap.x/CELL_W;
         int tap_idx = c*N_ROWS + r;             // column major order
         if (r < 0 || r >= N_ROWS || c < 0 || c >= N_COLS || tap_idx < 0 || tap_idx >= n_sat)
             continue;
 
         // normalize the tap location to upper left of cell
-        tap_s.x = c*CELL_W;
-        tap_s.y = TBORDER + r*CELL_H;
+        ui.tap.x = c*CELL_W;
+        ui.tap.y = TBORDER + r*CELL_H;
 
         // update tapped cell
         if (tap_idx == sel_idx) {
             // already on: toggle off and forget
-            showSelectionBox (tap_s, false);
+            showSelectionBox (ui.tap, false);
             prev_sel_idx = sel_idx;
             sel_idx = NO_SAT;
         } else {
@@ -1098,7 +1086,7 @@ static bool askSat()
                 showSelectionBox (sel_s, false);
             prev_sel_idx = sel_idx;
             sel_idx = tap_idx;
-            sel_s = tap_s;
+            sel_s = ui.tap;
             showSelectionBox (sel_s, true);
         }
     }
@@ -1272,22 +1260,22 @@ static void checkLEDAlarmEvents()
 
     case PS_NONE:
         // no pass: turn off
-        risetAlarm(BLINKER_OFF_HZ);
+        risetAlarm(BLINKER_OFF);
         break;
 
     case PS_UPSOON:
         // pass lies ahead: flash if within ALARM_DT
-        risetAlarm(days < ALARM_DT ? SATLED_RISING_HZ : BLINKER_OFF_HZ);
+        risetAlarm(days < ALARM_DT ? SATLED_RISING_HZ : BLINKER_OFF);
         break;
 
     case PS_UPNOW:
         // pass in progress: check for soon to set
-        risetAlarm(days < ALARM_DT ? SATLED_SETTING_HZ : BLINKER_ON_HZ);
+        risetAlarm(days < ALARM_DT ? SATLED_SETTING_HZ : BLINKER_ON);
         break;
 
     case PS_HASSET:
         // set: turn off
-        risetAlarm(BLINKER_OFF_HZ);
+        risetAlarm(BLINKER_OFF);
         break;
     }
 }
@@ -1414,7 +1402,7 @@ void updateSatPath()
     updateClocks(false);
 
     // start sat_path max size, then reduce when know size needed
-    sat_path = (SCoord *) malloc (MAX_PATH * sizeof(SCoord));
+    sat_path = (SCoord *) malloc (MAX_PATHPTS * sizeof(SCoord));
     if (!sat_path)
         fatalError ("No memory for satellite path");
 
@@ -1424,12 +1412,12 @@ void updateSatPath()
     // fill sat_path
     float period = sat->period();
     n_path = 0;
-    uint16_t max_path = isSatMoon() ? 1 : MAX_PATH;             // N.B. only set the current location if Moon
+    uint16_t max_path = isSatMoon() ? 1 : MAX_PATHPTS;             // N.B. only set the current location if Moon
     int dashed = 0;
     for (uint16_t p = 0; p < max_path; p++) {
 
         // place dashed line points off screen courtesy overMap()
-        if (getPathDashed(SATPATH_CSPR) && (dashed++ & (MAX_PATH>>7))) {   // first always on for center dot
+        if (getPathDashed(SATPATH_CSPR) && (dashed++ & (MAX_PATHPTS>>7))) {   // first always on for center dot
             sat_path[n_path] = {10000, 10000};
         } else {
             // compute next point along path
@@ -1446,7 +1434,7 @@ void updateSatPath()
     }
 
     updateClocks(false);
-    // Serial.printf ("n_path %u / %u\n", n_path, MAX_PATH);
+    // Serial.printf ("n_path %u / %u\n", n_path, MAX_PATHPTS);
 
     // reduce memory to only points actually used
     sat_path = (SCoord *) realloc (sat_path, n_path * sizeof(SCoord));
@@ -1456,7 +1444,6 @@ void updateSatPath()
 }
 
 /* draw the entire sat path and footprint, connecting points with lines.
- * N.B. only used with _IS_UNIX
  */
 void drawSatPathAndFoot()
 {
@@ -1478,6 +1465,32 @@ void drawSatPathAndFoot()
                     tft.drawCircleRaw (sp0.x, sp0.y, 2*pw, RA8875_BLACK);
                 }
                 tft.drawLineRaw (sp0.x, sp0.y, sp1.x, sp1.y, pw, pc);
+
+                // directional arrow flaring back 30 degs from sp1
+                if ((i % ARROW_EVERY) == 0) {
+                    const float cos_30 = 0.866F;
+                    const float sin_30 = 0.500F;
+                    SCoord &arrow_tip = sp0;
+                    SCoord &arrow_flare = sat_path[i-ARROW_EVERY/2];            // half way back
+                    int path_dx = (int)arrow_flare.x - (int)arrow_tip.x;        // from tip to flare
+                    int path_dy = (int)arrow_flare.y - (int)arrow_tip.y;
+                    float path_len = hypotf (path_dx, path_dy);
+                    float arrow_dx = path_dx * ARROW_L / path_len;
+                    float arrow_dy = path_dy * ARROW_L / path_len;
+                    float ccw_dx =  arrow_dx * cos_30 - arrow_dy * sin_30;
+                    float ccw_dy =  arrow_dx * sin_30 + arrow_dy * cos_30;
+                    float cw_dx  =  arrow_dx * cos_30 + arrow_dy * sin_30;
+                    float cw_dy  = -arrow_dx * sin_30 + arrow_dy * cos_30;
+                    SCoord ccw, cw;
+                    ccw.x =  roundf (arrow_tip.x + ccw_dx/2);
+                    ccw.y =  roundf (arrow_tip.y + ccw_dy/2);
+                    cw.x  =  roundf (arrow_tip.x + cw_dx/2);
+                    cw.y  =  roundf (arrow_tip.y + cw_dy/2);
+                    if (segmentSpanOkRaw(arrow_tip, ccw, 2*pw))
+                        tft.drawLineRaw (arrow_tip.x, arrow_tip.y, ccw.x, ccw.y, 0, pc);
+                    if (segmentSpanOkRaw(arrow_tip, cw, 2*pw))
+                        tft.drawLineRaw (arrow_tip.x, arrow_tip.y, cw.x, cw.y, 0, pc);
+                }
             }
         }
     }
@@ -1713,7 +1726,7 @@ bool setSatFromTLE (const char *name, const char *t1, const char *t2)
  */
 bool initSatSelection()
 {
-    risetAlarm(BLINKER_OFF_HZ);
+    risetAlarm(BLINKER_OFF);
     NVReadString (NV_SATNAME, sat_name);
     if (!SAT_NAME_IS_SET())
         return (false);
@@ -1990,23 +2003,19 @@ static void showNextSatEvents ()
     }
 
     // wait for user to ack
-    SCoord tap_s;
-    char type_c;
     UserInput ui = {
         ok_b,
         UI_UFuncNone,
         UF_UNUSED,
         _SNS_TIMEOUT,
         UF_NOCLOCKS,
-        tap_s,
-        type_c,
-        false,
-        false
+        {0, 0}, TT_NONE, '\0', false, false
     };
 
     do {
         waitForUser (ui);
-    } while (! (type_c == CHAR_CR || type_c == CHAR_NL || type_c == CHAR_ESC || inBox (tap_s, ok_b)) );
+    } while (! (ui.kb_char == CHAR_CR || ui.kb_char == CHAR_NL || ui.kb_char == CHAR_ESC
+                        || inBox (ui.tap, ok_b)) );
 
     // ack
     drawStringInBox (button_name, ok_b, true, RA8875_GREEN);
@@ -2023,7 +2032,7 @@ void drawDXSatMenu (const SCoord &s)
     };
     #define _DXS_INDENT 5
     MenuItem mitems[_DXS_N] = {
-        {MENU_1OFN, true,  1, _DXS_INDENT, "Change sat", 0},
+        {MENU_1OFN, true,  1, _DXS_INDENT, "Change satellite", 0},
         {MENU_1OFN, false, 1, _DXS_INDENT, "Rise/set table", 0},
         {MENU_1OFN, false, 1, _DXS_INDENT, "Turn off sat", 0},
         {MENU_1OFN, false, 1, _DXS_INDENT, "Show planning tool", 0},
@@ -2072,9 +2081,6 @@ void drawDXSatMenu (const SCoord &s)
             fatalError ("no dx sat menu");
         }
 
-    } else {
-        // cancelled, just restore sat info
-        drawSatPass();
     }
 
 }

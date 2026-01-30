@@ -870,13 +870,12 @@ static void checkTouch()
             scheduleNewPlot(PLOT_CH_MOON);
             scheduleNewPlot(PLOT_CH_SDO);
             scheduleNewPlot(PLOT_CH_BC);
-            drawDEInfo();
         }
+        drawDEInfo();   // restore regardless
     } else if (!SHOWING_PANE_0() && !dx_info_for_sat && inBox (s, dx_tz.box)) {
-        if (TZMenu (dx_tz, dx_ll)) {
+        if (TZMenu (dx_tz, dx_ll))
             NVWriteTZ (NV_DX_TZ, dx_tz);
-            drawDXInfo();
-        }
+        drawDXInfo();   // restore regardless
     } else if (inBox (s, cs_info.box)) {
         doCallsignTouch (s);
     } else if (!SHOWING_PANE_0() && !dx_info_for_sat && checkPathDirTouch(s)) {
@@ -2421,8 +2420,19 @@ static void runShutdownMenu(void)
         }
     }
 
-    if (do_full_init)
+    // redraw stuff nearby regardless to remove menu
+    if (do_full_init) {
+        // need full screen redo
         initScreen();
+    } else {
+        // just need updating in upper corner
+        updateCallsign (true);
+        showClocks();
+        updateClocks(true);
+        drawMainPageStopwatch(true);
+        drawScreenLock();
+        drawVersion(true);
+    }
 }
 
 
@@ -2534,13 +2544,18 @@ void fatalError (const char *fmt, ...)
         const char x_msg[] = "Exit";
         bool select_restart = true;
 
+        SCoord s;
+        char kbc;
         UserInput ui = {
             screen_b,
             UI_UFuncNone,
             UF_UNUSED,
             UI_NOTIMEOUT,
             UF_NOCLOCKS,
-            {0, 0}, TT_NONE, '\0', false, false
+            s,
+            kbc,
+            false,
+            false
         };
 
         drainTouch();
@@ -2555,22 +2570,22 @@ void fatalError (const char *fmt, ...)
             // wait for any user action
             (void) waitForUser(ui);
 
-            if (ui.kb_char == CHAR_LEFT || ui.kb_char == CHAR_RIGHT) {
+            if (kbc == CHAR_LEFT || kbc == CHAR_RIGHT) {
 
                 // L/R arrow keys appear to move to opposite selection
                 select_restart = !select_restart;
 
             } else {
 
-                bool typed_ok = ui.kb_char == CHAR_CR || ui.kb_char == CHAR_NL;
+                bool typed_ok = kbc == CHAR_CR || kbc == CHAR_NL;
 
-                if ((typed_ok && select_restart) || (ui.kb_char == CHAR_NONE && inBox(ui.tap, r_b))) {
+                if ((typed_ok && select_restart) || (kbc == CHAR_NONE && inBox(s, r_b))) {
                     drawStringInBox (r_msg, r_b, true, RA8875_WHITE);
                     Serial.print ("Fatal error: rebooting\n");
                     doReboot(false, false);
                 }
 
-                if ((typed_ok && !select_restart) || (ui.kb_char == CHAR_NONE && inBox(ui.tap, x_b))) {
+                if ((typed_ok && !select_restart) || (kbc == CHAR_NONE && inBox(s, x_b))) {
                     drawStringInBox (x_msg, x_b, true, RA8875_WHITE);
                     Serial.print ("Fatal error: exiting\n");
                     doExit();

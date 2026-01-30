@@ -25,7 +25,7 @@ bool plotXY (const SBox &box, float x[], float y[], int nxy, const char *xlabel,
 uint16_t color, float y_min, float y_max, float label_value)
 {
     char buf[32];
-    snprintf (buf, sizeof(buf), "%.*f", label_value >= 100 ? 0 : 1, label_value);
+    snprintf (buf, sizeof(buf), "%.*f", fabsf(label_value) >= 100 ? 0 : 1, label_value);
     return (plotXYstr (box, x, y, nxy, xlabel, ylabel, color, y_min, y_max, buf));
 }
 

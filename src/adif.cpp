@@ -306,9 +306,6 @@ static void runADIFMenu (const SBox &box)
 
         // refresh pane to engage choices
         scheduleNewPlot (PLOT_CH_ADIF);
-    } else {
-        // cancelled so maintain current display
-        drawADIFPane (box, getADIFilename());
     }
 
     // clean up 

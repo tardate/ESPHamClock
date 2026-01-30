@@ -173,10 +173,13 @@ uint16_t getTextWidth (const char str[])
     return (w);
 }
 
-/* remove trailing newline IN PLACE
+/* remove trailing nl and/or cr IN PLACE
  */
 void chompString (char *str)
 {
+    char *cr = strchr (str, '\r');
+    if (cr)
+        *cr = '\0';
     char *nl = strchr (str, '\n');
     if (nl)
         *nl = '\0';

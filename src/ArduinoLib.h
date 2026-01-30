@@ -211,7 +211,16 @@ typedef enum {
     SW_ALARMOFF_PIN = 4,
     SATALARM_PIN    = 5,
     ONAIR_PIN       = 6,
-    MCP_N_LINES     = 7,                // number of real pins assigned
+    RESERVED_PIN    = 7,
+    USER1_PIN       = 8,
+    USER2_PIN       = 9,
+    USER3_PIN       = 10,
+    USER4_PIN       = 11,
+    USER5_PIN       = 12,
+    USER6_PIN       = 13,
+    USER7_PIN       = 14,
+    USER8_PIN       = 15,
+    MCP_N_LINES     = 16,               // number of real pins assigned
     MCP_FAKE_KX3    = 99                // see ArduinoLib/Adafruit_MCP23X17.cpp
 } MCP23017Pins;
 
