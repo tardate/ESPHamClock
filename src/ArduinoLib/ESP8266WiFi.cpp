@@ -328,14 +328,11 @@ bool WiFi::RSSI(int &value, bool &is_dbm)
             wrq.u.data.pointer = &iwstats;
             wrq.u.data.length = sizeof(struct iw_statistics);
             wrq.u.data.flags = 1;
-            if (ioctl(sock, SIOCGIWSTATS, &wrq) < 0) {
-                printf ("SIOCGIWSTATS: %s\n", strerror(errno));
+            if (ioctl(sock, SIOCGIWSTATS, &wrq) == 0) {
+                // found one!
+                ok =  true;
                 break;
             }
-
-            // ok!
-            ok =  true;
-            break;
 
         } else if (debugLevel (DEBUG_WIFI, 1))
             printf ("SIOCGIWNAME: %s\n", strerror(errno));
