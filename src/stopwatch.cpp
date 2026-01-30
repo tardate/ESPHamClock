@@ -159,7 +159,7 @@ static void setAlarmPin (bool set)
 #define ALMD_LW         300                     // daily alarm control button width
 #define ALMD_LX0        (400-ALM_HGAP-ALMD_LW)  // daily alarm label x
 #define ALMD_TX0        (400+ALM_HGAP)          // daily alarm time button x
-#define ALMD_TW         130                     // daily time control button width
+#define ALMD_TW         160                     // daily time control button width
 #define ALMO_Y0         (ALMD_Y0+SW_BH+ALM_VGAP)// once-alarm buttons y
 #define ALMO_LW         300                     // once-alarm control button width
 #define ALMO_LX0        (400-ALM_HGAP-ALMO_LW)  // once-alarm label x
@@ -2190,6 +2190,9 @@ static void checkSWPageTouch()
                 else
                     new_sws = SWE_RESET;
                 break;
+            default:
+                new_sws = SWE_RESET;
+                break;
             }
 
             // update state and GUI
@@ -2253,6 +2256,8 @@ static void checkSWPageTouch()
                 Serial.println("SW: BigClock exit");
                 eraseScreen();
                 drawSWMainPage();
+            } else {
+                drawBigClock (true);
             }
             saveSWNV();
         }

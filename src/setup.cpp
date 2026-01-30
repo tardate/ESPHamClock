@@ -35,6 +35,7 @@ static bool good_wpa;
 #warning _SHOW_ALL and/or _MARK_BOUNDS are set
 #endif
 #ifdef _SHOW_ALL
+    #undef NO_UPGRADE
     #undef _WIFI_NEVER
     #undef _WIFI_ASK
     #define _WIFI_ALWAYS
@@ -247,12 +248,28 @@ static const char *units_names[UNITS_N] = {
 
 
 
+
+// whether auto upgrading is allowed is determined presence or absense of NO_UPGRADE
+
+#if defined(NO_UPGRADE)
+
+// entangled auto upgrade settings
+#define AUP_SETTINGS                    \
+    X(AUP_OFF,     "Off",    -1)        \
+    X(AUP_P1,      "Off",    -1)        \
+    X(AUP_P2,      "Off",    -1)        \
+    X(AUP_P3,      "Off",    -1)
+
+#else
+
 // entangled auto upgrade settings
 #define AUP_SETTINGS                    \
     X(AUP_OFF,     "Off",    -1)        \
     X(AUP_P1,      "03:00",   3)        \
     X(AUP_P2,      "12:00",  12)        \
     X(AUP_P3,      "21:00",  21)
+
+#endif // NO_UPGRADE
 
 typedef struct {
     const char *label;                  // menu label
@@ -272,6 +289,7 @@ static AutoUpSetting autoup_tbl[AUP_N] = {
     AUP_SETTINGS
 };
 #undef X
+
 
 
 
@@ -902,7 +920,11 @@ static BoolPrompt bool_pr[N_BPR] = {
 
     {4, {400, R2Y(10), 190, PR_H},  {590, R2Y(10), 170, PR_H}, false, "Auto upgrade?",
                     autoup_tbl[AUP_OFF].label, autoup_tbl[AUP_P1].label, AUTOUPB_BPR,
+#if defined(NO_UPGRADE)
+                    "Automatic upgrade is not available with this build"},
+#else
                     "Whether or during which hour HamClock will automatically update to latest version"},
+#endif // NO_UPGRADE
     {4, {400, R2Y(10), 190, PR_H},  {590, R2Y(10), 170, PR_H}, false, NULL,
                     autoup_tbl[AUP_P2].label, autoup_tbl[AUP_P3].label, AUTOUPA_BPR},
                                                 // 4x entangled: FF -> TF -> FT -> TT -> ...

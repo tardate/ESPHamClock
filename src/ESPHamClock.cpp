@@ -126,7 +126,9 @@ uint8_t flash_crc_ok = 1;
 
 // whether and which new version is available
 static bool new_avail;
+#if !defined(NO_UPGRADE)
 static char new_version[20];
+#endif // !NO_UPGRADE
 
 // name of each DETIME setting, for menu and set_defmt
 #define X(a,b)  b,                              // expands DETIMES to name plus comma
@@ -216,12 +218,20 @@ static void showDefines(void)
         _PR_MAC(_NATIVE_GPIOD_LINUX);
     #endif
 
+    #if defined(_USE_GPIOD)
+        _PR_MAC(_USE_GPIOD);
+    #endif
+
     #if defined(_NATIVE_GPIOBC_LINUX)
         _PR_MAC(_NATIVE_GPIOBC_LINUX);
     #endif
 
     #if defined(_SUPPORT_NATIVE_GPIO)
         _PR_MAC(_SUPPORT_NATIVE_GPIO);
+    #endif
+
+    #if defined(NO_UPGRADE)
+        _PR_MAC(NO_UPGRADE);
     #endif
 
     #if defined(_SUPPORT_KX3)
@@ -476,6 +486,7 @@ void setup()
         NVWriteTZ (NV_DE_TZ, de_tz);
     }
 
+#if !defined(NO_UPGRADE)
     // ask to update if new version available -- never returns if update succeeds
     if (!skip_skip) {
         new_avail = newVersionIsAvailable (new_version, sizeof(new_version));
@@ -485,6 +496,7 @@ void setup()
             eraseScreen();
         }
     }
+#endif // !NO_UPGRADE
 
     // init sensors
     initBME280();
@@ -944,6 +956,8 @@ static void checkTouch()
         initScreen();
     } else if (!SHOWING_PANE_0() && dx_info_for_sat && inBox (s, dx_info_b)) {
         drawDXSatMenu(s);
+
+#if !defined(NO_UPGRADE)
     } else if (inBox (s, version_b)) {
         new_avail = newVersionIsAvailable(new_version, sizeof(new_version));
         if (new_avail) {
@@ -953,6 +967,8 @@ static void checkTouch()
             (void) askOTAupdate (new_version, false, false);
         }
         initScreen();
+#endif // NO_UPGRADE
+
     } else if (inBox (s, wifi_b)) {
         // depends on what is currently displayed
         switch (rot_msg) {
@@ -1215,17 +1231,22 @@ void shadowString (const char *str, bool shadow, uint16_t color, uint16_t x0, ui
     tft.print (str);
 }
 
+#if !defined(NO_UPGRADE)
 /* return whether this is a beta version
  */
 static bool weAreBeta (void)
 {
     return (strchr (hc_version, 'b') != NULL);
 }
+#endif // !NO_UPGRADE
 
 /* draw current version if desired and occasionally check for new.
  */
 static void drawVersion (bool draw)
 {
+
+#if !defined(NO_UPGRADE)
+
     // occasionally check for new version, much more often if beta
     const uint32_t checkv_dt = weAreBeta() ? 5*60*1000UL : 6*3600*1000UL;   // millis
     static uint32_t checkv_t;
@@ -1285,6 +1306,8 @@ static void drawVersion (bool draw)
         }
 
     }
+
+#endif // !NO_UPGRADE
 
     // draw if desired
     if (draw) {

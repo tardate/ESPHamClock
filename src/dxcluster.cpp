@@ -177,11 +177,13 @@ static void engageDXCRow (DXSpot &s)
 
 /* log the given spot roughly similar to how spider spots look.
  * this is intended for logging spots from UDP.
- * DX de KD0AA:     18100.0  JR1FYS       FT8 LOUD in FL!                2156Z EL98
+ * DX de KD0AA:     18100.0  JR1FYS       FT8 LOUD in FL!                2156Z
  */
 static void logDXSpot (const char *label, const DXSpot &spot)
 {
-    dxcLog ("%s: DX de %-10s %8.1f  %s\n", label, spot.rx_call, spot.kHz, spot.tx_call);
+    const struct tm *spot_time = gmtime (&spot.spotted);
+    dxcLog ("%s: DX de %-10s %8.1f  %-44s%02d%02dZ\n", label, spot.rx_call, spot.kHz, spot.tx_call,
+                                spot_time->tm_hour, spot_time->tm_min);
 }
 
 /* add a potentially new spot to dxc_spots[].

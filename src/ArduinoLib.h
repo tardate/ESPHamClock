@@ -59,6 +59,11 @@
         #define _LINUX_WIRELESS_OK
       #endif
   #endif
+  #if defined(_USE_GPIOD)
+      #include <gpiod.h>
+      #define _NATIVE_GPIO_LINUX              // set for either GPIOD or GPIOBC
+      #define _NATIVE_GPIOD_LINUX             // gpiod is sufficiently mature to use
+  #endif
 #endif
     
 
@@ -78,12 +83,6 @@
         #include <libgpio.h>
     #endif
   #elif defined(_IS_LINUX)
-    // be prepared for either gpiod or legacy broadcom memory map interface
-    #if __has_include(<gpiod.h>)
-        #include <gpiod.h>
-        #define _NATIVE_GPIO_LINUX              // set for either GPIOD or GPIOBC
-        #define _NATIVE_GPIOD_LINUX             // gpiod is sufficiently mature to use
-    #endif
     #if __has_include(<pigpio.h>)
         #if !defined(_NATIVE_GPIO_LINUX)
             #define _NATIVE_GPIO_LINUX          // set for either GPIOD or GPIOBC; avoid dup

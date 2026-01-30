@@ -13,7 +13,7 @@
 .PHONY: clean clobber help hclibs
 
 # build flags common to all options and architectures
-CXXFLAGS = -IArduinoLib -IwsServer/include -Izlib-hc -I. -g -O2 -Wall -pthread -std=c++17 -march=native
+CXXFLAGS = -IArduinoLib -IwsServer/include -Izlib-hc -I. -g -O2 -Wall -pthread -std=c++17
 # CXXFLAGS += -Wextra -pedantic -Werror -Wno-attributes -Wno-unknown-pragmas
 
 # add explicit framebuffer depth as _FB_DEPTH if defined
@@ -34,6 +34,11 @@ CXX = g++
 ifeq ($(shell uname -s), Darwin)
     CXXFLAGS += -I/opt/X11/include
     LDXXFLAGS += -L/opt/X11/lib
+endif
+
+# check for proper version of gpiod on linux
+ifeq ($(shell GF=/usr/include/gpiod.h; if [ -r $$GF ] && grep -q "gpiod_line " $$GF; then echo yes; fi), yes)
+    CXXFLAGS += -D_USE_GPIOD
 endif
 
 # FreeBSD needs libgpio libexecinfo and local xorg
@@ -283,8 +288,7 @@ install:
 	    mkdir -p $$DIR \
 	    && mv -f $$SOURCE $$TARGET \
 	    && chown root $$TARGET \
-	    && chmod u+s $$TARGET \
-            && echo ready to run as: hamclock '&' ; \
+	    && chmod u+s $$TARGET; \
 	fi
 
 clean clobber:

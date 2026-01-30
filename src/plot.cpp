@@ -638,9 +638,9 @@ bool plotNOAASWx (const SBox &box)
 
     // labels below
     selectFontStyle (LIGHT_FONT, FAST_FONT);
+    tft.setTextColor(NOAASPW_COLOR);
     for (int i = 0; i < N_NOAASW_V; i++) {
         uint16_t value_x = value_x0 + i*value_w - 3;
-        selectFontStyle (LIGHT_FONT, FAST_FONT);
         tft.setCursor (value_x, footer_y);
         if (i == 0)
             tft.print ("Now");

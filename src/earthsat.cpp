@@ -43,6 +43,7 @@ bool dx_info_for_sat;                   // global to indicate whether dx_info_b 
 #define N_ROWS          ((480-TBORDER)/CELL_H)  // n rows in name table
 #define MAX_NSAT        (N_ROWS*N_COLS) // max names we can display
 #define MAX_PASS_STEPS  30              // max lines to draw for pass map
+#define OFFSCRN         20000           // x or y coord that is definitely off screen
 #define MAP_DT_W        (6*7)           // map time width assuming X YY:ZZ, pixels
 
 // used so findNextPass() can be used for contexts other than the current sat now
@@ -1481,8 +1482,8 @@ void updateSatPath()
     for (uint16_t p = 0; p < max_path; p++) {
 
         // place dashed line points off screen courtesy overMap()
-        if (getPathDashed(SATPATH_CSPR) && (dashed++ & (MAX_PATHPTS>>7))) {   // first always on for center dot
-            sat_path[n_path] = {10000, 10000};
+        if (getPathDashed(SATPATH_CSPR) && (dashed++ & (MAX_PATHPTS>>5))) {   // first always on for center dot
+            sat_path[n_path] = {OFFSCRN, OFFSCRN};
         } else {
             // compute next point along path
             ll2sRaw (satlat, satlng, sat_path[n_path], 2*lw);   // allow for end dot
@@ -1514,10 +1515,18 @@ void drawSatPathAndFoot()
     if (!sat)
         return;
 
-    // draw path, if on
+    // draw path if on with arrows
     int pw = getRawPathWidth(SATPATH_CSPR);
     if (pw) {
+        const float cos_30 = 0.866F;
+        const float sin_30 = 0.500F;
+        const bool dashed = getPathDashed(SATPATH_CSPR);
         uint16_t pc = getMapColor(SATPATH_CSPR);
+        int prev_vis_i = 0;                             // last i drawn in this segment
+        int last_vis_i;                                 // very last sat_path i that is visible
+        bool prev_vis = true;                           // whether previous point was visible
+        for (last_vis_i = n_path-1; sat_path[last_vis_i].x == OFFSCRN; --last_vis_i )
+            continue;
         for (int i = 1; i < n_path; i++) {
             SCoord &sp0 = sat_path[i-1];
             SCoord &sp1 = sat_path[i];
@@ -1530,32 +1539,40 @@ void drawSatPathAndFoot()
                 }
                 tft.drawLineRaw (sp0.x, sp0.y, sp1.x, sp1.y, pw, pc);
 
-                // directional arrow flaring back 30 degs from sp1
-                if ((i % ARROW_EVERY) == 0) {
-                    const float cos_30 = 0.866F;
-                    const float sin_30 = 0.500F;
-                    SCoord &arrow_tip = sp0;
-                    SCoord &arrow_flare = sat_path[i-ARROW_EVERY/2];            // half way back
-                    int path_dx = (int)arrow_flare.x - (int)arrow_tip.x;        // from tip to flare
-                    int path_dy = (int)arrow_flare.y - (int)arrow_tip.y;
-                    float path_len = hypotf (path_dx, path_dy);
-                    float arrow_dx = path_dx * ARROW_L / path_len;
-                    float arrow_dy = path_dy * ARROW_L / path_len;
-                    float ccw_dx =  arrow_dx * cos_30 - arrow_dy * sin_30;
-                    float ccw_dy =  arrow_dx * sin_30 + arrow_dy * cos_30;
-                    float cw_dx  =  arrow_dx * cos_30 + arrow_dy * sin_30;
-                    float cw_dy  = -arrow_dx * sin_30 + arrow_dy * cos_30;
-                    SCoord ccw, cw;
-                    ccw.x =  roundf (arrow_tip.x + ccw_dx/2);
-                    ccw.y =  roundf (arrow_tip.y + ccw_dy/2);
-                    cw.x  =  roundf (arrow_tip.x + cw_dx/2);
-                    cw.y  =  roundf (arrow_tip.y + cw_dy/2);
-                    if (segmentSpanOkRaw(arrow_tip, ccw, 2*pw))
-                        tft.drawLineRaw (arrow_tip.x, arrow_tip.y, ccw.x, ccw.y, 0, pc);
-                    if (segmentSpanOkRaw(arrow_tip, cw, 2*pw))
-                        tft.drawLineRaw (arrow_tip.x, arrow_tip.y, cw.x, cw.y, 0, pc);
+                // directional arrow flares back 30 degs from sp1 or last point drawn if dashed
+                if (i == last_vis_i || 
+                                ((dashed && !prev_vis) || (!dashed && (i % ARROW_EVERY) == 0))) {
+                    int tip_i = dashed && !prev_vis ? prev_vis_i : i;           // tip index
+                    SCoord &arrow_tip = sat_path[tip_i];                        // tip point
+                    SCoord &arrow_flare = sat_path[tip_i - ARROW_EVERY/2];      // flare point halfway back
+                    if (segmentSpanOkRaw(arrow_tip, arrow_flare, 2*pw)) {
+                        int path_dx = (int)arrow_flare.x - (int)arrow_tip.x;        // dx tip to flare
+                        int path_dy = (int)arrow_flare.y - (int)arrow_tip.y;        // dy tip to flare
+                        float path_len = hypotf (path_dx, path_dy);
+                        float arrow_dx = path_dx * ARROW_L / path_len;
+                        float arrow_dy = path_dy * ARROW_L / path_len;
+                        float ccw_dx =  arrow_dx * cos_30 - arrow_dy * sin_30;
+                        float ccw_dy =  arrow_dx * sin_30 + arrow_dy * cos_30;
+                        float cw_dx  =  arrow_dx * cos_30 + arrow_dy * sin_30;
+                        float cw_dy  = -arrow_dx * sin_30 + arrow_dy * cos_30;
+                        SCoord ccw, cw;
+                        ccw.x =  roundf (arrow_tip.x + ccw_dx/2);
+                        ccw.y =  roundf (arrow_tip.y + ccw_dy/2);
+                        cw.x  =  roundf (arrow_tip.x + cw_dx/2);
+                        cw.y  =  roundf (arrow_tip.y + cw_dy/2);
+                        if (segmentSpanOkRaw(arrow_tip, ccw, 2*pw) && segmentSpanOkRaw(arrow_tip, cw, 2*pw)) {
+                            tft.drawLineRaw (arrow_tip.x, arrow_tip.y, ccw.x, ccw.y, 0, pc);
+                            tft.drawLineRaw (arrow_tip.x, arrow_tip.y, cw.x, cw.y, 0, pc);
+                        }
+                    }
                 }
-            }
+
+                // update state for dashed arrows
+                prev_vis_i = i;
+                prev_vis = true;
+
+            } else
+                prev_vis = false;
         }
     }
 
