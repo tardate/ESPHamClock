@@ -112,7 +112,6 @@ static bool readSensor (int device)
     bool ok = false;
 
     // go
-    resetWatchdog();
     bme.takeForcedMeasurement();
     float t = bme.readTemperature();                                                    // C
     float p = bme.readPressure();                                                       // Pascals
@@ -188,8 +187,6 @@ float dewPoint (float T, float RH)
  */
 void drawOneBME280Pane (const SBox &box, PlotChoice ch)
 {
-    resetWatchdog();
-
     for (int i = 0; i < MAX_N_BME; i++) {
 
         // get data pointer, skip if not used
@@ -243,7 +240,6 @@ void drawOneBME280Pane (const SBox &box, PlotChoice ch)
         float *y = (float *) y_mem.getMem();
         time_t t0 = myNow();
         uint8_t nxy = 0;                                        // count entries with valid times
-        resetWatchdog();
         float value_now = 0;                                    // latest value is last
         for (int j = 0; j < N_BME_READINGS; j++) {
             uint8_t qj = (dp->q_head + j) % N_BME_READINGS;     // oldest .. newest == qhead .. qhead-1
@@ -338,8 +334,6 @@ const BMEData *getBMEData (BMEIndex device, bool fresh_read)
  */
 void readBME280 ()
 {
-    resetWatchdog();
-
     // reset here assuming both pane and BCB boxes had their chance
     new_data = false;
 

@@ -349,14 +349,10 @@ static bool replaceEncoding (char *from)
  */
 static void startPlainText (WiFiClient &client)
 {
-    resetWatchdog();
-
     client.println ("HTTP/1.0 200 OK");
     sendUserAgent (client);
     client.println ("Content-Type: text/plain; charset=us-ascii");
     client.println ("Connection: close\r\n");             // include extra blank line
-
-    resetWatchdog();
 }
 
 /* send the given message as HTTP error 400 Bad request.
@@ -364,8 +360,6 @@ static void startPlainText (WiFiClient &client)
  */
 static void sendHTTPError (WiFiClient &client, const char *fmt, ...)
 {
-    resetWatchdog();
-
     // expand
     StackMalloc errmsg_pool(200);
     char *errmsg = (char *) errmsg_pool.getMem();
@@ -384,8 +378,6 @@ static void sendHTTPError (WiFiClient &client, const char *fmt, ...)
     client.println ("Content-Type: text/plain; charset=us-ascii");
     client.println ("Connection: close\r\n");             // include extra blank line
     client.print (errmsg);
-
-    resetWatchdog();
 }
 
 /* report all choices for the given pane to client
@@ -485,7 +477,6 @@ static bool getWiFiCaptureBMP(WiFiClient &client, char *unused_line, size_t line
     createBMP565Header (hdr, hdr_len, n_bytes, BUILD_W, BUILD_H);
     
     // send the web page header
-    resetWatchdog();
     client.println ("HTTP/1.0 200 OK");
     sendUserAgent (client);
     client.println ("Content-Type: image/bmp");
@@ -499,7 +490,6 @@ static bool getWiFiCaptureBMP(WiFiClient &client, char *unused_line, size_t line
     free (hdr);
 
     // send the RGB565 pixels
-    resetWatchdog();
     tft.graphicsMode();
     tft.setXY(0,0);
     tft.writeCommand(RA8875_MRWC);
@@ -1471,7 +1461,6 @@ static bool getWiFiSensorData (WiFiClient &client, char line[], size_t line_len)
         client.print ("#   UTC ISO 8601      UNIX secs I2C  Temp,F  P,inHg   Hum,%  DewP,F\n");
 
     // send data for each connected sensor
-    resetWatchdog();
     for (int i = 0; i < MAX_N_BME; i++) {
         const BMEData *dp = getBMEData((BMEIndex)i, true);
         if (dp) {
@@ -1609,7 +1598,6 @@ static bool getWiFiSys (WiFiClient &client, char *unused_line, size_t line_len)
     getWorstMem (&worst_heap, &worst_stack);
 
     // show basic info
-    resetWatchdog();
     client.print ("Version  "); client.println (hc_version);
     snprintf (buf, sizeof(buf), "BuildSz  %d x %d\n", BUILD_W, BUILD_H); client.print(buf);
     client.print ("MaxStack "); client.println (worst_stack);
@@ -3506,8 +3494,6 @@ static bool setWiFiPane (WiFiClient &client, char line[], size_t line_len)
  */
 static bool setWiFiSatName (WiFiClient &client, char line[], size_t line_len)
 {
-    resetWatchdog();
-
     // do it
     if (setSatFromName (line))
         return (getWiFiSatellite (client, line, line_len));
@@ -4395,7 +4381,6 @@ static bool runWebserverCommand (WiFiClient &client, bool ro, char *command, siz
 {
     // search for command depending on context, execute its implementation function if found
     if (!ro || roCommandOk (command)) {
-        resetWatchdog();
         for (int i = 0; i < N_CMDTABLE; i++) {
             const CmdTble *ctp = &command_table[i];
             int cmd_len = strlen (ctp->command);
@@ -4414,7 +4399,6 @@ static bool runWebserverCommand (WiFiClient &client, bool ro, char *command, siz
                     *http = '\0';
 
                 // run handler, passing string starting right after the command, reply with error if trouble.
-                resetWatchdog();
                 PCTF funp = CT_FUNP(ctp);
                 if (!(*funp)(client, params, max_cmd_len - cmd_len))
                     sendHTTPError (client, "%.*s error: %s\n", cmd_len, command, params);
@@ -4563,8 +4547,6 @@ void checkWebServer(bool ro)
  */
 void initWebServer()
 {
-    resetWatchdog();
-
     if (restful_port < 0) {
         tftMsg (true, 0, "RESTful API service is disabled");
         return;

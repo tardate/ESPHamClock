@@ -234,8 +234,6 @@ static uint16_t readPhot()
     // value we will return. persistent for when no new data available and/or smoothing
     static uint16_t new_phot;
 
-    resetWatchdog();
-
     // try LTR on I2C first
 
     if (!tried_ltr) {
@@ -363,8 +361,6 @@ static void drawScale (SBox &b, uint16_t val_y, uint16_t bright_y, uint16_t dim_
  */
 static void drawPhotControl()
 {
-        resetWatchdog();
-
         if (!mainpage_up)
             return;
 
@@ -404,8 +400,6 @@ static void getBrControl (SBox &b)
  */
 static void drawBrControl()
 {
-        resetWatchdog();
-
         if (!mainpage_up)
             return;
 
@@ -451,8 +445,6 @@ static void drawBrControl()
  */
 static void drawOnOffControls()
 {
-        resetWatchdog();
-
         if (brb_mode != BRB_SHOW_ONOFF || !mainpage_up)
             return;
 
@@ -745,8 +737,6 @@ static bool isRPiDSI()
 
         if (!know) {
 
-            resetWatchdog();
-
             // try all
             dsi_path = NULL;
             for (int i = 0; i < NARRAY(dsi_paths); i++) {
@@ -836,8 +826,6 @@ void initBrightness()
             return;
         before = true;
 
-        resetWatchdog();
-
         // determine initial hw capabilities, might change depending on Setup
         (void) brDimmableOk();
         (void) brOnOffOk();
@@ -859,8 +847,6 @@ void setupBrightness()
         if (before)
             return;
         before = true;
-
-        resetWatchdog();
 
         // final check of hw capabilities after Setup.
         (void) brDimmableOk();
@@ -959,8 +945,6 @@ void drawBrightness()
  */
 void followBrightness()
 {
-        resetWatchdog();
-
         // not too fast (eg, while not updating map after new DE)
         static uint32_t follow_ms;
         if (!timesUp (&follow_ms, PHOT_DT))

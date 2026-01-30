@@ -176,8 +176,6 @@ bool enforceCDownAlone (const SBox &box, uint32_t rotset)
  */
 static PlotChoice askPaneChoice (PlotPane pp)
 {
-    resetWatchdog();
-
     // not for use for PANE_0
     if (pp == PANE_0)
         fatalError ("askPaneChoice called with pane 0");

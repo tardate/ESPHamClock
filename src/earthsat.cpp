@@ -49,6 +49,11 @@ bool dx_info_for_sat;                   // global to indicate whether dx_info_b 
 #define OFFSCRN         20000           // x or y coord that is definitely off screen
 static SBox ok_b = {730,10,55,35};      // Ok button
 
+// NV_SATnFLAGS bit masks
+typedef enum {
+    SF_PATH_MASK = 1,
+} SatFlags;
+
 // used so findNextPass() can be used for contexts other than the current sat now
 typedef struct {
     DateTime rise_time, set_time;       // next pass times
@@ -94,7 +99,7 @@ typedef struct {
     SBox name_b;                                        // canonical coords of name on map
     char name[NV_SATNAME_LEN];                          // name, spaces are underscores
     NV_Name nv_name;                                    // NV property for persistent name
-    NV_Name nv_color;                                   // NV property for persistent color
+    NV_Name nv_flags;                                   // NV property for persistent option flags
     ColorSelection cs;                                  // path control
 } SatState;
 static SatState sat_state[MAX_ACTIVE_SATS];             // [1].sat is set only if [0].sat is also set
@@ -189,7 +194,7 @@ static void unsetSat (SatState &s)
         }
     }
 
-    // reset name here and in NV
+    // reset name and flags here and in NV
     s.name[0] = '\0';
     NVWriteString (s.nv_name, s.name);
 
@@ -554,7 +559,7 @@ static void drawSatName (SatState &s)
     tft.print (user_name);
 }
 
-/* set s.name_b with where sat name should go on map
+/* set s.name_b with where sat name should go on map, else s.name_b.x = 0
  */
 static void setSatMapNameLoc (SatState &s)
 {
@@ -570,6 +575,10 @@ static void setSatMapNameLoc (SatState &s)
         s.name_b.x = CLAMPF (s.name_b.x, map_b.x + 10, map_b.x + map_b.w - s.name_b.w - 10);
         s.name_b.y = CLAMPF (s.name_b.y, map_b.y + 10, map_b.y + map_b.h - s.name_b.h - 10);
     }
+
+    // one last check for over usable map
+    if (!overMap (s.name_b))
+        s.name_b.x = 0;
 }
 
 /* mark current sat pass location 
@@ -1869,29 +1878,49 @@ bool initSat()
     Serial.printf ("SAT: max tle age set to %d days\n", maxTLEAgeDays());
     risetAlarm(BLINKER_OFF);
 
-    // se obs
+    // set obs
     obs = new Observer (de_ll.lat_d, de_ll.lng_d, 0);
 
     // init each sat -- N.B. must do inline
+
     SatState &s0 = sat_state[0];
     s0.nv_name = NV_SAT1NAME;
-    s0.nv_color = NV_SAT1COLOR;
+    s0.nv_flags = NV_SAT1FLAGS;
     s0.cs = SAT1_CSPR;
     if (!NVReadString (NV_SAT1NAME, s0.name) || !SAT_NAME_IS_SET(s0) || !checkSatUpToDate (s0, NULL))
         unsetSat(s0);
+
+    uint8_t flags0 = 0;
+    if (!NVReadUInt8 (s0.nv_flags, &flags0)) {
+        flags0 |= SF_PATH_MASK;
+        NVWriteUInt8 (s0.nv_flags, flags0);
+    }
+    s0.show_path = (flags0 & SF_PATH_MASK) != 0;
+
+
     SatState &s1 = sat_state[1];
     s1.nv_name = NV_SAT2NAME;
-    s1.nv_color = NV_SAT2COLOR;
+    s1.nv_flags = NV_SAT2FLAGS;
     s1.cs = SAT2_CSPR;
     if (!NVReadString (NV_SAT2NAME, s1.name) || !SAT_NAME_IS_SET(s1) || !checkSatUpToDate (s1, NULL))
         unsetSat(s1);
+
+    uint8_t flags1 = 0;
+    if (!NVReadUInt8 (s1.nv_flags, &flags1)) {
+        flags1 |= SF_PATH_MASK;
+        NVWriteUInt8 (s1.nv_flags, flags1);
+    }
+    s1.show_path = (flags1 & SF_PATH_MASK) != 0;
 
     // N.B. enforce that [1] is active only if [0] is also active
     if (s1.sat && !s0.sat) {
 
         // rebuild what was in 1 as 0
-        NVWriteString (s0.nv_name, s0.name);
-        unsetSat (s1);                                  // reset s1.nv_name
+        strcpy (s0.name, s1.name);
+        NVWriteString (s0.nv_name, s1.name);
+        s0.show_path = s1.show_path;
+        NVWriteUInt8 (s0.nv_flags, s0.show_path ? SF_PATH_MASK : 0);
+        unsetSat (s1);                                  // resets s1 name and nv_name
         if (!checkSatUpToDate (s0, NULL))
             fatalError ("sat %s disappeared", s0.name);
     }
@@ -2222,8 +2251,10 @@ void drawDXSatMenu (const SCoord &s)
     // set path states
     bool path1 = sat_state[0].show_path;
     bool path2 = sat_state[1].show_path;
-    const MenuFieldType menu_path1 = n_sats > 0 ? MENU_TOGGLE : MENU_IGNORE;
-    const MenuFieldType menu_path2 = n_sats > 1 ? MENU_TOGGLE : MENU_IGNORE;
+    bool moon1 = strcasecmp (sat_state[0].name, "Moon") == 0;
+    bool moon2 = strcasecmp (sat_state[1].name, "Moon") == 0;
+    const MenuFieldType menu_path1 = n_sats > 0 && !moon1 ? MENU_TOGGLE : MENU_IGNORE;
+    const MenuFieldType menu_path2 = n_sats > 1 && !moon2 ? MENU_TOGGLE : MENU_IGNORE;
 
     // retrieve saved names without '_'
     char name1[NV_SATNAME_LEN] = "", name2[NV_SATNAME_LEN] = "";
@@ -2241,13 +2272,13 @@ void drawDXSatMenu (const SCoord &s)
         {MENU_1OFN,   false, 1, _DXS_INDENT1,  "Show DX Info here", NULL},
 
         {menu_name1,  false, 1, _DXS_INDENT1,  name1, NULL},
-        {menu_path1,  path1, 2, _DXS_INDENT2,  "Show path also", NULL},
+        {menu_path1,  path1, 2, _DXS_INDENT2,  "Show track also", NULL},
         {menu_pass1,  false, 1, _DXS_INDENT2,  "Show pass here", NULL},
         {menu_sat1,   false, 1, _DXS_INDENT2,  "Show rise/set table", NULL},
         {menu_sat1,   false, 1, _DXS_INDENT2,  "Show planning tool", NULL},
 
         {menu_name2,  false, 1, _DXS_INDENT1,  name2, NULL},
-        {menu_path2,  path2, 3, _DXS_INDENT2,  "Show path also", NULL},
+        {menu_path2,  path2, 3, _DXS_INDENT2,  "Show track also", NULL},
         {menu_pass2,  false, 1, _DXS_INDENT2,  "Show pass here", NULL},
         {menu_sat2,   false, 1, _DXS_INDENT2,  "Show rise/set table", NULL},
         {menu_sat2,   false, 1, _DXS_INDENT2,  "Show planning tool", NULL},
@@ -2270,10 +2301,12 @@ void drawDXSatMenu (const SCoord &s)
             case _SMI_PATH1:
                 // toggle path for sat 0
                 sat_state[0].show_path = mitems[i].set;
+                NVWriteUInt8 (sat_state[0].nv_flags, sat_state[0].show_path ? SF_PATH_MASK : 0);
                 break;
             case _SMI_PATH2:
                 // toggle path for sat 1
                 sat_state[1].show_path = mitems[i].set;
+                NVWriteUInt8 (sat_state[1].nv_flags, sat_state[1].show_path ? SF_PATH_MASK : 0);
                 break;
             }
 

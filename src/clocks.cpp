@@ -153,8 +153,6 @@ static void prHM6 (const time_t t)
  */
 static void drawRiseSet(time_t t0, time_t trise, time_t tset, SBox &b, uint8_t srss, int tz_secs)
 {
-    resetWatchdog();
-
     fillSBox (b, RA8875_BLACK);
     //drawSBox (b.x, b.y, b.w, b.h, RA8875_WHITE);
     selectFontStyle (LIGHT_FONT, FAST_FONT);
@@ -977,8 +975,6 @@ void updateClocks(bool all)
     // set to update other times as well
     bool draw_other_times = false;
 
-    resetWatchdog();
-
     // always draw seconds because we know it has changed
     if (all || (tm_wo.Second/10) != (prev_sc/10)) {
 
@@ -1037,8 +1033,6 @@ void updateClocks(bool all)
     // draw H:M if either changes
     if (all || tm_wo.Minute != prev_mn || tm_wo.Hour != prev_hr) {
 
-        resetWatchdog();
-
         // draw H:M roughly right-justified in left 2/3
         selectFontStyle (BOLD_FONT, LARGE_FONT);
         snprintf (buf, sizeof(buf), "%02d:%02d", tm_wo.Hour, tm_wo.Minute);
@@ -1066,8 +1060,6 @@ void updateClocks(bool all)
 
     // draw date if new day
     if (all || tm_wo.Day != prev_dy || tm_wo.Wday != prev_wd || tm_wo.Month != prev_mo || tm_wo.Year != prev_yr) {
-
-        resetWatchdog();
 
         // update other info
         draw_other_times = true;
@@ -1129,8 +1121,6 @@ void updateClocks(bool all)
  */
 void drawDESunRiseSetInfo()
 {
-    resetWatchdog();
-
     time_t trise, tset, t0 = nowWO();
     getSolarRS (t0, de_ll, &trise, &tset);
 
@@ -1145,8 +1135,6 @@ void drawDXSunRiseSetInfo()
 {
     if (dxsrss == DXSRSS_PREFIX)
         return;
-
-    resetWatchdog();
 
     time_t trise, tset, t0 = nowWO();
     getSolarRS (t0, dx_ll, &trise, &tset);

@@ -138,7 +138,6 @@ static bool getGPSDSomething(bool (*lookf)(const char *buf, void *arg), void *ar
         // connect to and read from gpsd server, 
         // N.B. do not use getTCPLine() which calls updateClocks() which calls now() which can call for
         //      a time refresh which calls us!
-        resetWatchdog();
         if (gpsd_client.connect (host, GPSD_PORT)) {
 
             // initial progress

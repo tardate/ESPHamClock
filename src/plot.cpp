@@ -34,8 +34,6 @@ uint16_t color, float y_min, float y_max, float label_value)
 bool plotXYstr (const SBox &box, float x[], float y[], int nxy, const char *xlabel, const char *ylabel,
 uint16_t color, float y_min, float y_max, char *label_str)
 {
-    resetWatchdog();
-
     // no labels implies overlay previous plot
     bool overlay = xlabel == NULL && ylabel == NULL;
 
@@ -201,7 +199,6 @@ uint16_t color, float y_min, float y_max, char *label_str)
     uint16_t prev_px = 0, prev_py = 0;
     bool prev_lacuna = false;           // avoid adjacent lacunas, eg, env plots
     const float lacuna_dx = 5*dx/nxy;   // define as a gap at least 5x average spacing
-    resetWatchdog();
     for (int i = 0; i < nxy; i++) {
         // Serial.printf ("kp %2d: %g %g\n", i, x[i], y[i]);
         if (kp_plot) {
@@ -261,8 +258,6 @@ uint16_t color, float y_min, float y_max, char *label_str)
  */
 void plotWX (const SBox &box, uint16_t color, const WXInfo &wi)
 {
-    resetWatchdog();
-
     // prep
     prepPlotBox (box);
 
@@ -406,8 +401,6 @@ void plotWX (const SBox &box, uint16_t color, const WXInfo &wi)
  */
 void plotBandConditions (const SBox &box, int busy, const BandCdtnMatrix *bmp, char *cfg_str)
 {
-    resetWatchdog();
-
     // layout
     #define PFONT_H 7                                   // plot labels font height
     #define PFONT_W 7                                   // plot labels font width
@@ -558,8 +551,6 @@ void plotBandConditions (const SBox &box, int busy, const BandCdtnMatrix *bmp, c
  */
 bool plotNOAASWx (const SBox &box)
 {
-    resetWatchdog();
-
     // prep
     prepPlotBox (box);
 
@@ -674,7 +665,6 @@ void plotMessage (const SBox &box, uint16_t color, const char *message)
     uint16_t y = box.y + box.h/4;
 
     // show up to at least a few lines
-    resetWatchdog();
     for (int n_lines = 0; n_lines < 5 && msg_printed < msg_len; n_lines++) {
 
         // chop at max width -- maxStringW overwrites all beyond with 0's

@@ -254,12 +254,9 @@ static bool retrieveCurrentWX (const LatLong &ll, bool is_de, WXCache &wxc)
 
     bool ok = false;
 
-    resetWatchdog();
-
     // get
     if (wx_client.connect(backend_host, backend_port)) {
         updateClocks(false);
-        resetWatchdog();
 
         // query web page
         snprintf (line, sizeof(line), "%s?is_de=%d&lat=%g&lng=%g", wx_ll, is_de, ll.lat_d, ll.lng_d);
@@ -652,13 +649,8 @@ static const WXInfo *findWXTXCache (const LatLong &ll, bool is_de, Message &ynot
         Serial.printf ("WXTZ: expires in %d sec at %d\n", MAX_WXTZ_AGE, at);
     }
 
-    // return requested info else why not
-    if (wxc.ok)
-        return (&wxc.info);
-
-    next_err_update = nextWiFiRetry (retry_msg);
-    ynot.set ("update failed");
-    return (NULL);
+    // return current info
+    return (&wxc.info);
 }
 
 /* return current WXInfo with weather at de or dx.

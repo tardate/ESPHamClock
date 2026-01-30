@@ -684,6 +684,10 @@ typedef enum {
     NV_MINLBLDIST,              // minimum labeling distance
     NV_SAT2NAME,                // satellite 2 name with underscore for each space
     NV_PSK_SHOWPATH,            // whether Live Spots show paths
+    NV_SAT1FLAGS,               // satellite 1 options
+
+    // 240
+    NV_SAT2FLAGS,               // satellite 2 options
 
     NV_N
 
@@ -1109,7 +1113,6 @@ extern bool boxesOverlap (const SBox &b1, const SBox &b2);
 extern void doReboot (bool minus_K, bool minus_0);
 extern void printFreeHeap (const __FlashStringHelper *label);
 extern void getWorstMem (int *heap, int *stack);
-extern void resetWatchdog(void);
 extern void wdDelay(int ms);
 extern bool timesUp (uint32_t *prev, uint32_t dt);
 extern const SCoord raw2appSCoord (const SCoord &s_raw);
@@ -2466,8 +2469,8 @@ extern void prepPlotBox (const SBox &box);
  *
  */
 
-extern void plotMapData (const char title[], const char y_label[], float x_data[], float y_data[],int n_data);
-extern void plotServerFile (const char *filename, const char title[], const char y_label[]);
+extern void plotMapData (const char title[], const char x_label[], float x_data[], float y_data[],int n_data);
+extern void plotServerFile (const char *filename, const char title[], const char x_label[]);
 
 
 
@@ -3603,7 +3606,7 @@ extern char *xrayLevel (char *buf, const SpaceWeather_t &xray);
 #define MIN_WIFI_DBM            (-75)           // minimum acceptable signal strength, dBm
 #define MIN_WIFI_PERCENT        (10)            // minimum acceptable signal strength, percent
 
-extern void runWiFiMeter (bool warn, bool &ignore_on);
+extern void plotWiFiHistory(void);
 extern bool readWiFiRSSI(int &rssi, bool &is_dbm);
 
 

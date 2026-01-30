@@ -34,8 +34,6 @@
  */
 static void drawGLInit (const time_t yr0, SBox &resume_b)
 {
-    resetWatchdog();
-
     // fresh
     fillSBox (map_b, RA8875_BLACK);
 
@@ -99,8 +97,6 @@ static void drawGLInit (const time_t yr0, SBox &resume_b)
  */
 static void drawGLGrid (const time_t yr0, uint16_t x0, uint16_t x1)
 {
-    resetWatchdog();
-
     // draw horizontal grid lines
     for (int hr = 0; hr < 24; hr++) {                                   // skip last ...
         uint16_t y = GL_H2Y(hr);
@@ -126,8 +122,6 @@ static void drawGLGrid (const time_t yr0, uint16_t x0, uint16_t x1)
  */
 static void drawGLData (const time_t yr0, uint16_t x0, uint16_t x1)
 {
-    resetWatchdog();
-
     // draw today line if within [x0,x1]
     uint16_t today_x = GL_D2X((myNow() - yr0)/SECSPERDAY);
     if (today_x >= x0 && today_x <= x1)
@@ -135,8 +129,6 @@ static void drawGLData (const time_t yr0, uint16_t x0, uint16_t x1)
 
     int prev_doy = 0;
     for (uint16_t x = x0; x < x1; x++) {
-
-        resetWatchdog();
 
         // x resolution is greater than days so avoid dups
         int doy = GL_X2D(x);
@@ -300,8 +292,6 @@ void plotGrayline()
 
         // show new popup if tap is within the plot area
         if (ui.tap.x > GL_X0 && ui.tap.x < GL_X1 && ui.tap.y > GL_Y0 && ui.tap.y < GL_Y1) {
-
-            resetWatchdog();
 
             // popup corner at s
             popup.b.x = ui.tap.x;

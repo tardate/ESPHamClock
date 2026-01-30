@@ -79,8 +79,6 @@ static SBox uptime_b;                           // show up time, just below call
 #define UPTIME_INDENT   15                      // indent within uptime_b for "Up" label
 static SBox version_b;                          // show or check version, just below call
 static SBox wifi_b;                             // wifi info
-static bool rssi_ignore;                        // allow op to ignore low wifi power
-static int rssi_avg;                            // running rssi mean
 #define RSSI_ALPHA 0.5F                         // rssi blending coefficient
 #define CSINFO_DROP     2                       // gap below cs_info
 #define CSINFO_H        9                       // up/wifi/version box heights
@@ -973,7 +971,7 @@ static void checkTouch()
         // depends on what is currently displayed
         switch (rot_msg) {
         case ROTM_RSSI:
-            runWiFiMeter (false, rssi_ignore);
+            plotWiFiHistory();
             break;
         case ROTM_CPUTEMP:
             plotCPUTempHistory();
@@ -1352,6 +1350,7 @@ static void drawRotatingMessage()
         case ROTM_RSSI: {
 
             static int prev_logv;               // only log large changes
+            static int rssi_avg;                // running rssi mean
 
             // read
             int rssi;
@@ -1361,10 +1360,6 @@ static void drawRotatingMessage()
                 // blend, or use as-is if first time
                 rssi_avg = prev_logv == 0 ? rssi : roundf(rssi*RSSI_ALPHA + rssi_avg*(1-RSSI_ALPHA));
                 bool ok = (is_dbm && rssi_avg >= MIN_WIFI_DBM) || (!is_dbm && rssi_avg >= MIN_WIFI_PERCENT);
-
-                // show meter if too low unless ignored
-                if (!ok && !rssi_ignore)
-                    runWiFiMeter (true, rssi_ignore);
 
                 // display value
                 snprintf (str, sizeof(str), "WiFi %4d%s", rssi_avg, is_dbm ? " dBm" : "%");
@@ -2155,13 +2150,7 @@ void eraseScreen()
     mainpage_up = false;
 }
 
-/* holdover from ESP days
- */
-void resetWatchdog()
-{
-}
-
-/* like delay() but breaks into small chunks so we can call resetWatchdog() and update live web
+/* like delay() but breaks into small chunks so we can update live web
  */
 void wdDelay(int ms)
 {

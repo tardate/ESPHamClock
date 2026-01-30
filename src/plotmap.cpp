@@ -35,7 +35,7 @@
 
 /* plot the 2d data on the earth map.
  */
-void plotMapData (const char title[], const char y_label[], float x_data[], float y_data[], int n_data)
+void plotMapData (const char title[], const char x_label[], float x_data[], float y_data[], int n_data)
 {
     // skip if not at least 2 points
     if (n_data < 2) {
@@ -78,9 +78,9 @@ void plotMapData (const char title[], const char y_label[], float x_data[], floa
 
     // draw x label
     selectFontStyle (LIGHT_FONT, FAST_FONT);
-    uint16_t xw = getTextWidth(y_label);
+    uint16_t xw = getTextWidth(x_label);
     tft.setCursor (map_b.x + (map_b.w - xw)/2, XLBLY);
-    tft.print (y_label);
+    tft.print (x_label);
 
     // draw grids
     tft.setTextColor (LABELC);
@@ -144,7 +144,7 @@ void plotMapData (const char title[], const char y_label[], float x_data[], floa
 
 /* read and plot the given server file.
  */
-void plotServerFile (const char *filename, const char *title, const char y_label[])
+void plotServerFile (const char *filename, const char *title, const char x_label[])
 {
     // base of filename
     const char *file_slash = strrchr (filename, '/');
@@ -160,7 +160,6 @@ void plotServerFile (const char *filename, const char *title, const char y_label
     Serial.println (filename);
     if (map_client.connect (backend_host, backend_port)) {
         updateClocks(false);
-        resetWatchdog();
 
         // query web page
         httpHCGET (map_client, backend_host, filename);
@@ -214,7 +213,7 @@ void plotServerFile (const char *filename, const char *title, const char y_label
 out:
 
     if (ok)
-        plotMapData (title, y_label, x_data, y_data, n_data);
+        plotMapData (title, x_label, x_data, y_data, n_data);
 
     // clean up, any error is already reported
     free (x_data);

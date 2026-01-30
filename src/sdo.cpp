@@ -203,8 +203,6 @@ bool isSDORotating(void)
  */
 bool updateSDOPane (const SBox &box)
 {
-    resetWatchdog();
-
     // advance choice if rotating
     if (isSDORotating()) {
         sdo_choice = (sdo_choice + 1) % SDOT_N;

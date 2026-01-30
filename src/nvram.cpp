@@ -360,6 +360,10 @@ static const uint8_t nv_sizes[NV_N] = {
     2,                          // NV_MINLBLDIST
     NV_SATNAME_LEN,             // NV_SAT2NAME
     1,                          // NV_PSK_SHOWPATH
+    1,                          // NV_SAT1FLAGS
+
+    // 240
+    1,                          // NV_SAT2FLAGS
 
 };
 

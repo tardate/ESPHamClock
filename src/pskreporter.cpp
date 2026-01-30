@@ -256,10 +256,8 @@ static bool retrievePSK (void)
     Serial.printf ("PSK: query: %s\n", query);
 
     // fetch and fill reports[]
-    resetWatchdog();
     if (psk_client.connect(backend_host, backend_port)) {
         updateClocks(false);
-        resetWatchdog();
 
         // query web page
         httpHCGET (psk_client, backend_host, query);

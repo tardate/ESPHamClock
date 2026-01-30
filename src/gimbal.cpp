@@ -323,7 +323,6 @@ static bool connectHamlib (const SBox &box)
 
     // connect
     Serial.printf ("GBL: %s:%d\n", host, port);
-    resetWatchdog();
     if (!hamlib_client.connect (host, port)) {
         char msg[NV_ROTHOST_LEN+30];
         snprintf (msg, sizeof(msg), "%s:%d connection failed", host, port);
