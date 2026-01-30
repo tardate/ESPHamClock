@@ -59,10 +59,10 @@ static void drawIB_DB (const LatLong &ll, uint16_t tx, int dy, uint16_t &ty)
 /* drawMouseLoc() helper to show weather at the given location,
  * update ty by dy for each row used.
  */
-static void drawIB_WX (const LatLong &ll, uint16_t tx, int dy, uint16_t &ty)
+static void drawIB_WX (const LatLong &ll, uint16_t tx, int dy, int max_ty, uint16_t &ty)
 {
     WXInfo wi;
-    if (getFastWx (ll, wi)) {
+    if (ty <= max_ty && getFastWx (ll, wi)) {
 
         // previous could call updateClocks which changes font!
         selectFontStyle (LIGHT_FONT, FAST_FONT);
@@ -72,19 +72,21 @@ static void drawIB_WX (const LatLong &ll, uint16_t tx, int dy, uint16_t &ty)
         tft.setCursor (tx, ty += dy);
         tft.printf ("Temp%4.0f%c", tmp, showTempC() ? 'C' : 'F');
 
-        // conditions else wind
-        int clen = strlen(wi.conditions);
-        if (clen > 0) {
-            tft.setCursor (tx, ty += dy);
-            if (clen > IB_MAXCHARS)
-                clen = IB_MAXCHARS;
-            tft.printf ("%*s%.*s", (IB_MAXCHARS-clen)/2, "", IB_MAXCHARS, wi.conditions);
-        } else {
-            float spd = (showDistKm() ? 3.6F : 2.237F) * wi.wind_speed_mps; // kph or mph
-            char wbuf[30];
-            snprintf (wbuf, sizeof(wbuf), "%s@%.0f", wi.wind_dir_name, spd);
-            tft.setCursor (tx, ty += dy);
-            tft.printf ("Wnd%6s", wbuf);
+        // conditions else wind if room
+        if (ty <= max_ty) {
+            int clen = strlen(wi.conditions);
+            if (clen > 0) {
+                tft.setCursor (tx, ty += dy);
+                if (clen > IB_MAXCHARS)
+                    clen = IB_MAXCHARS;
+                tft.printf ("%*s%.*s", (IB_MAXCHARS-clen)/2, "", IB_MAXCHARS, wi.conditions);
+            } else {
+                float spd = (showDistKm() ? 3.6F : 2.237F) * wi.wind_speed_mps; // kph or mph
+                char wbuf[30];
+                snprintf (wbuf, sizeof(wbuf), "%s@%.0f", wi.wind_dir_name, spd);
+                tft.setCursor (tx, ty += dy);
+                tft.printf ("Wnd%6s", wbuf);
+            }
         }
     }
 }
@@ -110,6 +112,22 @@ static void drawIB_Freq (long hz, uint16_t tx, int dy, uint16_t &ty)
         tft.printf ("f %7.1f", hz * 1e-3);
     else
         tft.printf ("f %7.0f", hz * 1e-3);
+}
+
+/* drawMouseLoc() helper to show mode, if known.
+ * update ty by dy for each row used.
+ */
+static bool drawIB_Mode (const char *mode, uint16_t tx, int dy, uint16_t &ty)
+{
+    if (mode && strlen(mode) > 0) {
+        char buf[IB_MAXCHARS+1];
+        snprintf (buf, sizeof(buf), "%.*s", IB_MAXCHARS, mode);
+        uint16_t tw = getTextWidth(buf);
+        tft.setCursor (tx + (view_btn_b.w-tw)/2, ty += dy);
+        tft.printf (buf);
+        return (true);
+    } else
+        return (false);
 }
 
 /* drawMouseLoc() helper for looking up city.
@@ -238,7 +256,7 @@ static void drawIB_PSK (const SBox &minfo_b, const DXSpot &dx_s, const LatLong &
     drawIB_DB (dxc_ll, tx+IB_INDENT, IB_LINEDY, ty);
 
     // show weather
-    drawIB_WX (dxc_ll, tx+IB_INDENT, IB_LINEDY, ty);
+    drawIB_WX (dxc_ll, tx+IB_INDENT, IB_LINEDY, minfo_b.y+minfo_b.h-IB_LINEDY, ty);
 
     // border in band color
     drawSBox (minfo_b, getBandColor(dx_s.kHz));
@@ -265,10 +283,12 @@ static void drawIB_DXPed (const SBox &minfo_b, const DXPedEntry *dxp, const SCoo
     tft.setCursor (tx + (view_btn_b.w-tw)/2, ty += IB_LINEDY);
     tft.printf (buf);
 
-    // show frequency if currently on the cluster list
+    // show frequency and mode if currently on the cluster list
     const DXSpot *spotted = findDXCCall (dxp->call);
-    if (spotted)
+    if (spotted) {
         drawIB_Freq (spotted->kHz*1000, tx+IB_INDENT, IB_LINEDY, ty);
+        drawIB_Mode (spotted->mode, tx+IB_INDENT, IB_LINEDY, ty);
+    }
 
     // then either worked ADIF entries or normal stuff
     DXPedsWorked *worked;
@@ -277,7 +297,8 @@ static void drawIB_DXPed (const SBox &minfo_b, const DXPedEntry *dxp, const SCoo
 
         // format band-mode to fit nicely in MAXCHARS
         typedef char BandModeStr_t[IB_MAXCHARS+1];          // + 1 for EOS
-        BandModeStr_t *bm = (BandModeStr_t *) malloc (n_worked * sizeof(BandModeStr_t));    // N.B. free!
+        StackMalloc bm_mem(n_worked * sizeof(BandModeStr_t));
+        BandModeStr_t *bm = (BandModeStr_t *) bm_mem.getMem();
         for (int i = 0; i < n_worked; i++) {
             const char *band_name = findBandName (worked[i].hb);
             int gap = IB_MAXCHARS - 1 - strlen(band_name) - strlen(worked[i].mode);         // -1 for 'm'
@@ -296,7 +317,6 @@ static void drawIB_DXPed (const SBox &minfo_b, const DXPedEntry *dxp, const SCoo
         }
 
         // clean up
-        free ((void*)bm);
         free ((void*)worked);
 
     } else {
@@ -335,9 +355,8 @@ static void drawIB_DXPed (const SBox &minfo_b, const DXPedEntry *dxp, const SCoo
         // show distance and bearing
         drawIB_DB (dxp->ll, tx+IB_INDENT, IB_LINEDY, ty);
 
-        // show weather if room
-        if (ty < minfo_b.y+minfo_b.h - 2*IB_LINEDY)
-            drawIB_WX (dxp->ll, tx+IB_INDENT, IB_LINEDY, ty);
+        // show weather
+        drawIB_WX (dxp->ll, tx+IB_INDENT, IB_LINEDY, minfo_b.y+minfo_b.h-IB_LINEDY, ty);
     }
 
     // border
@@ -374,12 +393,7 @@ static void drawIB_DX (const SBox &minfo_b, const DXSpot &dx_s, const LatLong &d
     tft.printf (buf);
 
     // show mode if known
-    if (strlen (dx_s.mode) > 0) {
-        snprintf (buf, sizeof(buf), "%.*s", IB_MAXCHARS, dx_s.mode);
-        tw = getTextWidth(buf);
-        tft.setCursor (tx + (view_btn_b.w-tw)/2, ty += IB_LINEDY);
-        tft.printf (buf);
-    } else
+    if (!drawIB_Mode (dx_s.mode, tx+IB_INDENT, IB_LINEDY, ty))
         ty += IB_LINEDY;
 
     // show freq
@@ -395,7 +409,7 @@ static void drawIB_DX (const SBox &minfo_b, const DXSpot &dx_s, const LatLong &d
     drawIB_DB (dxc_ll, tx+IB_INDENT, IB_LINEDY, ty);
 
     // show weather
-    drawIB_WX (dxc_ll, tx+IB_INDENT, IB_LINEDY, ty);
+    drawIB_WX (dxc_ll, tx+IB_INDENT, IB_LINEDY, minfo_b.y+minfo_b.h-IB_LINEDY, ty);
 
     // border in band color
     drawSBox (minfo_b, getBandColor(dx_s.kHz));
@@ -452,7 +466,7 @@ static void drawIB_Loc (const SBox &minfo_b, const LatLong &ll, const SCoord &ms
     drawIB_DB (ll, tx+IB_INDENT, IB_LINEDY, ty);
 
     // show weather
-    drawIB_WX (ll, tx+IB_INDENT, IB_LINEDY, ty);
+    drawIB_WX (ll, tx+IB_INDENT, IB_LINEDY, minfo_b.y+minfo_b.h-IB_LINEDY, ty);
 
     // border
     drawSBox (minfo_b, RA8875_WHITE);
@@ -483,7 +497,7 @@ void drawInfoBox()
     LatLong ll;                                         // ll at ms
     DXSpot dx_s;                                        // spot info
     LatLong dxc_ll;                                     // ll to mark
-    const DXPedEntry *dxp = NULL;                       // set if over
+    DXPedEntry *dxp = NULL;                             // set if over
     PlotPane pp;                                        // set if over SDO or Moon pane
 
     bool over_app = tft.getMouse (&ms.x, &ms.y);

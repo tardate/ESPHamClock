@@ -20,7 +20,7 @@
 bool crackClusterSpot (char line[], DXSpot &spot)
 {
     // fresh
-    memset (&spot, 0, sizeof(spot));
+    spot = {};
 
     // DX de KD0AA:     18100.0  JR1FYS       FT8 LOUD in FL!                2156Z EL98
     if (sscanf (line, "DX de %11[^ :]: %f %11s", spot.rx_call, &spot.kHz, spot.tx_call) != 3) {
@@ -223,7 +223,7 @@ bool wsjtxParseStatusMsg (uint8_t *msg, DXSpot &spot)
     }
 
     // looks good, create new record
-    memset (&spot, 0, sizeof(spot));
+    spot = {};
     strncpy (spot.tx_call, dx_call, sizeof(spot.tx_call)-1);        // preserve EOS
     strncpy (spot.rx_call, de_call, sizeof(spot.rx_call)-1);        // preserve EOS
     strncpy (spot.tx_grid, dx_grid, sizeof(spot.tx_grid)-1);        // preserve EOS
@@ -308,7 +308,7 @@ static bool extractXMLElementContent (const char xml[], const char key[], char c
 bool crackXMLSpot (const char xml[], DXSpot &spot)
 {
     // fresh
-    memset (&spot, 0, sizeof(spot));
+    spot = {};
 
     char buf[100];
     char *endptr;

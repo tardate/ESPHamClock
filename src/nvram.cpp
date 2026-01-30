@@ -355,6 +355,10 @@ static const uint8_t nv_sizes[NV_N] = {
     1,                          // NV_UDPSPOTS
     1,                          // NV_AUTOUPGRADE
 
+    // 235
+    1,                          // NV_MAXTLEAGE
+    2,                          // NV_MINLBLDIST
+
 
 };
 

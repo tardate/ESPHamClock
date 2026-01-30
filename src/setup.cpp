@@ -15,10 +15,13 @@
 
 // only FB0 needs wifi now, even _WEB_ONLY users should set up their networking first
 #if defined (_USE_FB0)
-    #define _WIFI_ALWAYS
-#else
+    #if !defined(_WIFI_NEVER)
+        #define _WIFI_ALWAYS
+    #endif
+#elif !defined(_WIFI_NEVER)
     #define _WIFI_NEVER
 #endif
+
 
 // this was originally used on platforms that gave an option whether to set wifi creds
 // #define _WIFI_ASK
@@ -296,6 +299,30 @@ typedef struct {
 } StringPrompt;
 
 
+
+// max tle ages
+static const char *maxTLEAges[] = {
+    "3 days",
+    "7 days",
+    "14 days",
+    "21 days"
+};
+#define N_MAXTLE NARRAY(maxTLEAges)
+#define MAXTLE_DEF      1                       // index of default
+
+
+// min label distances
+static const char *minLblD[] = {
+    "None",
+    "1000",
+    "2000",
+    "4000"
+};
+#define N_MINLBL NARRAY(minLblD)
+#define MINLBL_DEF      0                       // index of default
+
+
+
 // N.B. must match string_pr[] order
 typedef enum {
     // page "1"
@@ -545,31 +572,45 @@ typedef enum {
     DATEFMT_MDY_BPR,
     DATEFMT_DMYYMD_BPR,
     LOGUSAGE_BPR,
+
     WEEKDAY1MON_BPR,
     DEMO_BPR,
+
     UNITSA_BPR,
     UNITSB_BPR,
     BEARING_BPR,
+
     SHOWPIP_BPR,
     NEWDXDEWX_BPR,
+
     SPOTLBLA_BPR,
     SPOTLBLB_BPR,
+    LBLDISTA_BPR,
+    LBLDISTB_BPR,
+
+    SCROLLDIR_BPR,
     GRAYA_BPR,
     GRAYB_BPR,
-    SCROLLDIR_BPR,
-    MAP_ROTPA_BPR,
-    MAP_ROTPB_BPR,
+
     PANE_ROTPA_BPR,
     PANE_ROTPB_BPR,
+    MAP_ROTPA_BPR,
+    MAP_ROTPB_BPR,
+
+    UDPSPOTS_BPR,
     QRZBIOA_BPR,
     QRZBIOB_BPR,
-    UDPSPOTS_BPR,
-    UDPSETSDX_BPR,
+
     AUTOMAP_BPR,
+    UDPSETSDX_BPR,
+
+    WEB_FULLSCRN_BPR,
     AUTOUPA_BPR,
     AUTOUPB_BPR,
-    WEB_FULLSCRN_BPR,
+
     X11_FULLSCRN_BPR,
+    MAXTLEA_BPR,
+    MAXTLEB_BPR,
 
     // page "6" -- color editor
 
@@ -791,16 +832,16 @@ static BoolPrompt bool_pr[N_BPR] = {
                     lbl_styles[LBL_NONE], lbl_styles[LBL_DOT], SPOTLBLB_BPR,
                     "How or whether to label spot locations on map"},
     {4, {10,  R2Y(5), 190, PR_H},  {200, R2Y(5), 170, PR_H}, false, NULL,
-                                        lbl_styles[LBL_PREFIX], lbl_styles[LBL_CALL], SPOTLBLA_BPR},
+                    lbl_styles[LBL_PREFIX], lbl_styles[LBL_CALL], SPOTLBLA_BPR},
                                                 // 4x entangled: FF -> TF -> FT -> TT -> ...
 
 
-    {4, {400, R2Y(5), 190, PR_H},  {590, R2Y(5), 170, PR_H}, false, "Gray display?", "No", NULL, GRAYB_BPR,
-                    "Whether to render the map or entire screen in shades of gray"},
-    {4, {400, R2Y(5), 190, PR_H},  {590, R2Y(5), 170, PR_H}, false, NULL, "All", "Map", GRAYA_BPR},
-                                                // 3x entangled: FX -> TF -> TT ...
-                                                // N.B. names must match getGrayDisplay();
-
+    {4, {400, R2Y(5), 190, PR_H},  {590, R2Y(5), 170, PR_H}, false, "Min label dist?",
+                    minLblD[0], minLblD[1], LBLDISTB_BPR,
+                    "Minimum distance from DE to label spots; mi or km as per Units"},
+    {4, {400, R2Y(5), 190, PR_H},  {590, R2Y(5), 170, PR_H}, false, NULL,
+                    minLblD[2], minLblD[3], LBLDISTA_BPR},
+                                                // 4x entangled: FF -> TF -> FT -> TT -> ...
 
 
     {4, {10,  R2Y(6), 190, PR_H},  {200, R2Y(6), 170, PR_H}, false, "Scroll direction?",
@@ -808,12 +849,11 @@ static BoolPrompt bool_pr[N_BPR] = {
                     "Whether to scroll overflowing lists top-to-bottom or bottom-to-top"},
 
 
-    {4, {400, R2Y(6), 190, PR_H},  {590, R2Y(6), 170, PR_H}, false, "Map rotation?",
-                    maprotp_strs[0], maprotp_strs[1], MAP_ROTPB_BPR,
-                    "Select how often to change map style if more than one is selected"},
-    {4, {400, R2Y(6), 190, PR_H},  {590, R2Y(6), 170, PR_H}, false, NULL,
-                    maprotp_strs[2], maprotp_strs[3], MAP_ROTPA_BPR},
-                                                // 4x entangled: FF -> TF -> FT -> TT -> ...
+    {4, {400, R2Y(6), 190, PR_H},  {590, R2Y(6), 170, PR_H}, false, "Gray display?", "No", NULL, GRAYB_BPR,
+                    "Whether to render the map or entire screen in shades of gray"},
+    {4, {400, R2Y(6), 190, PR_H},  {590, R2Y(6), 170, PR_H}, false, NULL, "All", "Map", GRAYA_BPR},
+                                                // 3x entangled: FX -> TF -> TT ...
+                                                // N.B. names must match getGrayDisplay();
 
 
     {4, {10,  R2Y(7), 190, PR_H},  {200, R2Y(7), 170, PR_H}, false, "Pane rotation?",
@@ -824,18 +864,26 @@ static BoolPrompt bool_pr[N_BPR] = {
                                                 // 4x entangled: FF -> TF -> FT -> TT -> ...
 
 
-    {4, {400, R2Y(7), 190, PR_H},  {590, R2Y(7), 170, PR_H}, false, "Look up bio?",
-                    qrz_urltable[QRZ_NONE].label, qrz_urltable[QRZ_QRZ].label, QRZBIOB_BPR,
-                    "Whether and from which resource to offer looking up cluster spot biography"},
+    {4, {400, R2Y(7), 190, PR_H},  {590, R2Y(7), 170, PR_H}, false, "Map rotation?",
+                    maprotp_strs[0], maprotp_strs[1], MAP_ROTPB_BPR,
+                    "Select how often to change map style if more than one is selected"},
     {4, {400, R2Y(7), 190, PR_H},  {590, R2Y(7), 170, PR_H}, false, NULL,
-                                qrz_urltable[QRZ_HAMCALL].label, qrz_urltable[QRZ_CQQRZ].label, QRZBIOA_BPR},
+                    maprotp_strs[2], maprotp_strs[3], MAP_ROTPA_BPR},
                                                 // 4x entangled: FF -> TF -> FT -> TT -> ...
+
 
 
     {4, { 10, R2Y(8), 190, PR_H},  {200, R2Y(8), 170, PR_H}, false, "Show UDP spots?", "By me", "All",NOMATE,
                     "Whether to show all spots from local UDP programs or just those from DE"},
-    {4, {400, R2Y(8), 190, PR_H},  {590, R2Y(8), 170, PR_H}, false, "UDP sets DX?", "No", "Yes", NOMATE,
-                    "Whether UDP spots from local programs also set DX"},
+
+
+
+    {4, {400, R2Y(8), 190, PR_H},  {590, R2Y(8), 170, PR_H}, false, "Look up bio?",
+                    qrz_urltable[QRZ_NONE].label, qrz_urltable[QRZ_QRZ].label, QRZBIOB_BPR,
+                    "Whether and from which resource to offer looking up cluster spot biography"},
+    {4, {400, R2Y(8), 190, PR_H},  {590, R2Y(8), 170, PR_H}, false, NULL,
+                                qrz_urltable[QRZ_HAMCALL].label, qrz_urltable[QRZ_CQQRZ].label, QRZBIOA_BPR},
+                                                // 4x entangled: FF -> TF -> FT -> TT -> ...
 
 
 
@@ -843,24 +891,36 @@ static BoolPrompt bool_pr[N_BPR] = {
                     "Whether to automatically select Aurora or DRAP map styles when solar activity is high"},
 
 
-
-
-    {4, {400, R2Y(9), 190, PR_H},  {590, R2Y(9), 170, PR_H}, false, "Auto upgrade?",
-                    autoup_tbl[AUP_OFF].label, autoup_tbl[AUP_P1].label, AUTOUPB_BPR,
-                    "Whether or during which hour HamClock will automatically update to latest version"},
-    {4, {400, R2Y(9), 190, PR_H},  {590, R2Y(9), 170, PR_H}, false, NULL,
-                    autoup_tbl[AUP_P2].label, autoup_tbl[AUP_P3].label, AUTOUPA_BPR},
-                                                // 4x entangled: FF -> TF -> FT -> TT -> ...
-
+    {4, {400, R2Y(9), 190, PR_H},  {590, R2Y(9), 170, PR_H}, false, "UDP sets DX?", "No", "Yes", NOMATE,
+                    "Whether UDP spots from local programs also set DX"},
 
 
 
     {4, { 10, R2Y(10), 190, PR_H}, {200, R2Y(10), 170, PR_H}, false, "Full scrn web?", "No", "Yes", NOMATE,
                     "Whether the web interface will allow using the full screen"},
 
-    {4, {400, R2Y(10), 190, PR_H}, {590, R2Y(10), 170, PR_H}, false, "Full scrn direct?", "No", "Yes",NOMATE,
+
+    {4, {400, R2Y(10), 190, PR_H},  {590, R2Y(10), 170, PR_H}, false, "Auto upgrade?",
+                    autoup_tbl[AUP_OFF].label, autoup_tbl[AUP_P1].label, AUTOUPB_BPR,
+                    "Whether or during which hour HamClock will automatically update to latest version"},
+    {4, {400, R2Y(10), 190, PR_H},  {590, R2Y(10), 170, PR_H}, false, NULL,
+                    autoup_tbl[AUP_P2].label, autoup_tbl[AUP_P3].label, AUTOUPA_BPR},
+                                                // 4x entangled: FF -> TF -> FT -> TT -> ...
+
+
+    {4, { 10, R2Y(11), 190, PR_H}, {200, R2Y(11), 170, PR_H}, false, "Full scrn direct?", "No", "Yes",NOMATE,
                     "Whether the direct screen display will be set to full screen"},
                                                 // N.B. state box must be wide enough for "Won't fit"
+
+
+    {4, {400, R2Y(11), 190, PR_H},  {590, R2Y(11), 170, PR_H}, false, "Max TLE age:",
+                    maxTLEAges[0], maxTLEAges[1], MAXTLEB_BPR,
+                    "Max allowed satellite TLE age; beware longer will result in larger errors"},
+    {4, {400, R2Y(11), 190, PR_H},  {590, R2Y(11), 170, PR_H}, false, NULL,
+                    maxTLEAges[2], maxTLEAges[3], MAXTLEA_BPR},
+                                                // 4x entangled: FF -> TF -> FT -> TT -> ...
+
+
 
 
 
@@ -1841,17 +1901,19 @@ static void nextTabFocus (bool backwards)
         { NULL, &bool_pr[SHOWPIP_BPR] },
         { NULL, &bool_pr[NEWDXDEWX_BPR] },
         { NULL, &bool_pr[SPOTLBLA_BPR] },
-        { NULL, &bool_pr[GRAYA_BPR] },
+        { NULL, &bool_pr[LBLDISTA_BPR] },
         { NULL, &bool_pr[SCROLLDIR_BPR] },
-        { NULL, &bool_pr[MAP_ROTPA_BPR] },
+        { NULL, &bool_pr[GRAYA_BPR] },
         { NULL, &bool_pr[PANE_ROTPA_BPR] },
-        { NULL, &bool_pr[QRZBIOA_BPR] },
+        { NULL, &bool_pr[MAP_ROTPA_BPR] },
         { NULL, &bool_pr[UDPSPOTS_BPR] },
-        { NULL, &bool_pr[UDPSETSDX_BPR] },
+        { NULL, &bool_pr[QRZBIOA_BPR] },
         { NULL, &bool_pr[AUTOMAP_BPR] },
-        { NULL, &bool_pr[AUTOUPA_BPR] },
+        { NULL, &bool_pr[UDPSETSDX_BPR] },
         { NULL, &bool_pr[WEB_FULLSCRN_BPR] },
+        { NULL, &bool_pr[AUTOUPA_BPR] },
         { NULL, &bool_pr[X11_FULLSCRN_BPR] },
+        { NULL, &bool_pr[MAXTLEA_BPR] },
 
         // page 6
 
@@ -2221,11 +2283,11 @@ static void checkLLGEdit(const StringPrompt *sp)
 
         // convert to grid if possible
         LatLong ll;
-        strtrim (string_pr[LAT_SPR].v_str);
-        strtrim (string_pr[LNG_SPR].v_str);
+        strTrimAll (string_pr[LAT_SPR].v_str);
+        strTrimAll (string_pr[LNG_SPR].v_str);
         if (latSpecIsValid (string_pr[LAT_SPR].v_str, ll.lat_d)
                         && lngSpecIsValid (string_pr[LNG_SPR].v_str, ll.lng_d)) {
-            normalizeLL (ll);
+            ll.normalize();
             ll2maidenhead (string_pr[GRID_SPR].v_str, ll);
             eraseSPValue (&string_pr[GRID_SPR]);
             drawSPValue (&string_pr[GRID_SPR]);
@@ -2239,7 +2301,7 @@ static void checkLLGEdit(const StringPrompt *sp)
 
         // convert to ll if possible
         LatLong ll;
-        strtrim (sp->v_str);
+        strTrimAll (sp->v_str);
         if (maidenhead2ll (ll, sp->v_str)) {
             formatLat (ll.lat_d, string_pr[LAT_SPR].v_str, string_pr[LAT_SPR].v_len);
             eraseSPValue (&string_pr[LAT_SPR]);
@@ -3435,7 +3497,7 @@ static void changePage (int new_page)
 static bool portOK (char *port_str, int min_port, uint16_t *portp)
 {
     char *first_bad;
-    strtrim (port_str);
+    strTrimAll (port_str);
     int portn = strtol (port_str, &first_bad, 10);
     if (first_bad == port_str || *first_bad != '\0' || portn < min_port || portn > 65535)
         return (false);
@@ -3567,7 +3629,7 @@ static bool validateStringPrompts (bool show_errors)
     SPIds err_sid = N_SPR;
 
     // check call
-    strtrim(cs_info.call);
+    strTrimAll(cs_info.call);
     if (!callsignOk (cs_info.call))
         badsids[n_badsids++] = CALL_SPR;
 
@@ -3598,7 +3660,7 @@ static bool validateStringPrompts (bool show_errors)
 
         // clean up any extra white space in the commands then check for blank entries that are on
         for (int i = 0; i < N_DXCLCMDS; i++) {
-            strtrim(dxcl_cmds[i]);
+            strTrimAll(dxcl_cmds[i]);
             if (strlen(dxcl_cmds[i]) == 0 && bool_pr[DXCLCMD0_BPR+i].state)
                 badsids[n_badsids++] = (SPIds)(DXCLCMD0_SPR+i);
         }
@@ -3614,7 +3676,7 @@ static bool validateStringPrompts (bool show_errors)
 
     // ONTA watch list must compile successfully if being used
     if (getWatchListState (WLID_ONTA, NULL) != WLA_OFF) {
-        strtrim (onta_wlist);
+        strTrimAll (onta_wlist);
         if (!compileWatchList (WLID_ONTA, onta_wlist, err_buf)) {
             err_msg = err_buf.get();
             badsids[n_badsids++] = err_sid = ONTAWL_SPR;
@@ -3623,7 +3685,7 @@ static bool validateStringPrompts (bool show_errors)
 
     // ADIF watch list must compile successfully
     if (getWatchListState (WLID_ADIF, NULL) != WLA_OFF) {
-        strtrim (adif_wlist);
+        strTrimAll (adif_wlist);
         if (!compileWatchList (WLID_ADIF, adif_wlist, err_buf)) {
             err_msg = err_buf.get();
             badsids[n_badsids++] = err_sid = ADIFWL_SPR;
@@ -3738,7 +3800,7 @@ static bool validateStringPrompts (bool show_errors)
 
     // check I2C file name
     if (bool_pr[I2CON_BPR].state) {
-        strtrim (i2c_fn);
+        strTrimAll (i2c_fn);
         if (!I2CFnOk())
             badsids[n_badsids++] = I2CFN_SPR;
     }
@@ -4228,7 +4290,7 @@ static void initSetup()
         // http://www.kansastravel.org/geographicalcenter.htm
         de_ll.lng_d = -99;
         de_ll.lat_d = 40;
-        normalizeLL(de_ll);
+        de_ll.normalize();
         NVWriteFloat (NV_DE_LAT, de_ll.lat_d);
         NVWriteFloat (NV_DE_LNG, de_ll.lng_d);
         ll2maidenhead (de_maid, de_ll);
@@ -4569,6 +4631,43 @@ static void initSetup()
         NVWriteInt8 (NV_AUTOUPGRADE, aup_hr);
         setEntangledValue (AUTOUPA_BPR, AUTOUPB_BPR, autoup_tbl[AUP_OFF].label);
     }
+
+
+
+    uint8_t max_tle = 0;
+    int max_tle_i = -1;                                 // index of matching maxTLEAges, if any
+    (void) NVReadUInt8 (NV_MAXTLEAGE, &max_tle);        // will fix if bogus
+    for (int i = 0; i < N_MAXTLE; i++) {
+        if (max_tle == atoi(maxTLEAges[i])) {
+            max_tle_i = i;
+            break;
+        }
+    }
+    if (max_tle_i < 0) {
+        max_tle_i = MAXTLE_DEF;
+        uint8_t fix_max_tle = atoi(maxTLEAges[MAXTLE_DEF]);
+        NVWriteUInt8 (NV_MAXTLEAGE, fix_max_tle);
+        Serial.printf ("Setup: fixing NV_MAXTLEAGE from %d to %d\n", max_tle, fix_max_tle);
+    }
+    setEntangledValue (MAXTLEA_BPR, MAXTLEB_BPR, maxTLEAges[max_tle_i]);
+
+
+    uint16_t min_lbl = 0;
+    int min_lbl_i = -1;                                 // index of matching maxTLEAges, if any
+    (void) NVReadUInt16 (NV_MINLBLDIST, &min_lbl);      // will fix if bogus
+    for (int i = 0; i < N_MINLBL; i++) {
+        if (min_lbl == atoi(minLblD[i])) {
+            min_lbl_i = i;
+            break;
+        }
+    }
+    if (min_lbl_i < 0) {
+        min_lbl_i = MINLBL_DEF;
+        uint16_t fix_min_lbl = atoi(minLblD[MINLBL_DEF]);
+        NVWriteUInt16 (NV_MINLBLDIST, fix_min_lbl);
+        Serial.printf ("Setup: fixing NV_MINLBLDIST from %d to %d\n", min_lbl, fix_min_lbl);
+    }
+    setEntangledValue (LBLDISTA_BPR, LBLDISTB_BPR, minLblD[min_lbl_i]);
 }
 
 
@@ -4604,17 +4703,21 @@ static bool askRun()
         // check for touch, type ESC or abort box
         SCoord s;
         TouchType tt = readCalTouchWS (s);
-        char c = tft.getChar (NULL, NULL);
-        if (tt != TT_NONE || c != CHAR_NONE) {
-            drainTouch();
-            if (c == CHAR_ESC || (tt != TT_NONE && inBox (s, skip_b))) {
-                drawStringInBox ("Skip", skip_b, true, TX_C);
-                return (false);
+        if (tt == TT_TAP_BX)
+            tooltip (s, "click to skip Setup");
+        else {
+            char c = tft.getChar (NULL, NULL);
+            if (tt != TT_NONE || c != CHAR_NONE) {
+                drainTouch();
+                if (c == CHAR_ESC || (tt != TT_NONE && inBox (s, skip_b))) {
+                    drawStringInBox ("Skip", skip_b, true, TX_C);
+                    return (false);
+                }
+                    
+                break;
             }
-                
-            break;
+            wdDelay(100);
         }
-        wdDelay(100);
     }
 
     return (to > 0);
@@ -5263,6 +5366,8 @@ static void saveParams2NV()
     NVWriteUInt8 (NV_QRZID, getQRZId());
     NVWriteUInt8 (NV_UDPSPOTS, bool_pr[UDPSPOTS_BPR].state);
     NVWriteUInt8 (NV_UDPSETSDX, bool_pr[UDPSETSDX_BPR].state);
+    NVWriteUInt8 (NV_MAXTLEAGE, maxTLEAgeDays());
+    NVWriteUInt16 (NV_MINLBLDIST, atoi(getEntangledValue (LBLDISTA_BPR, LBLDISTB_BPR)));
 
     // save and engage user's X11 settings
     uint16_t x11flags = 0;
@@ -5287,7 +5392,7 @@ static void saveParams2NV()
 
     // save DE tz and grid only if ll was edited and op is not using some other method to set location
     if (!bool_pr[GEOIP_BPR].state && !bool_pr[GPSDON_BPR].state && !bool_pr[NMEAON_BPR].state && ll_edited) {
-        normalizeLL (de_ll);
+        de_ll.normalize();
         NVWriteFloat(NV_DE_LAT, de_ll.lat_d);
         NVWriteFloat(NV_DE_LNG, de_ll.lng_d);
         NVWriteString(NV_DE_GRID, scrubGrid(string_pr[GRID_SPR].v_str));
@@ -6178,3 +6283,20 @@ bool autoUpgrade (int &local_hour)
     fatalError ("unknown auto up: %s", label);
     return (false);  // lint
 }
+
+/* return longest allow TLE age in days
+ */
+int maxTLEAgeDays(void)
+{
+    return (atoi (getEntangledValue (MAXTLEA_BPR, MAXTLEB_BPR)));
+}
+
+/* return minimum distance to label spots in great circle radians
+ */
+float minLabelDist(void)
+{
+    int mld_linear = atoi (getEntangledValue (LBLDISTA_BPR, LBLDISTB_BPR));
+    float mld_angle = mld_linear / (showDistKm() ? (ERAD_M*KM_PER_MI): ERAD_M);
+    return (mld_angle);
+}
+

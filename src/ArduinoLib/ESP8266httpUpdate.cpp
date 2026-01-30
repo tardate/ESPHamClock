@@ -293,13 +293,18 @@ t_httpUpdate_return ESPhttpUpdate::update(WiFiClient &client, const char *url)
 
 	// within the new source tree, make the same target we were made with
         printf ("OTA: making %s\n", our_make);
+
+        // use all but one core for building
+        int ncores = sysconf(_SC_NPROCESSORS_ONLN);
+        int j = ncores > 1 ? ncores - 1 : 1;  // use n-1 cores, but at least 1
+
     #ifdef _IS_FREEBSD
-	if (!runCommand (false, 12, 99, N_MAKE_LINES, "cd %s/%s && gmake -j 2 %s",tmp_dir,make_dir,our_make)) {
+	if (!runCommand (false, 12, 99, N_MAKE_LINES, "cd %s/%s && gmake -j %d %s %s", tmp_dir, make_dir, j, build_variables, our_make)) {
     #else
-	if (!runCommand (false, 12, 99, N_MAKE_LINES, "cd %s/%s && make -j 2 %s",tmp_dir,make_dir,our_make)) {
+	if (!runCommand (false, 12, 99, N_MAKE_LINES, "cd %s/%s && make -j %d %s %s", tmp_dir, make_dir, j, build_variables, our_make)) {
     #endif
             cleanupDir (tmp_dir);
-	    return (HTTP_UPDATE_FAILED);
+	        return (HTTP_UPDATE_FAILED);
         }
 
         // get the mode of the currently running file before we remove it

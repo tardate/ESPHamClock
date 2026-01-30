@@ -665,7 +665,7 @@ static void updateCircumstances()
     getSolarCir (utc, de_ll, solar_cir);
     sun_ss_ll.lat_d = rad2deg(solar_cir.dec);
     sun_ss_ll.lng_d = -rad2deg(solar_cir.gha);
-    normalizeLL (sun_ss_ll);
+    sun_ss_ll.normalize();
     csslat = cosf(sun_ss_ll.lat);
     ssslat = sinf(sun_ss_ll.lat);
     ll2s (sun_ss_ll, sun_c.s, SUN_R+1);
@@ -673,7 +673,7 @@ static void updateCircumstances()
     getLunarCir (utc, de_ll, lunar_cir);
     moon_ss_ll.lat_d = rad2deg(lunar_cir.dec);
     moon_ss_ll.lng_d = -rad2deg(lunar_cir.gha);
-    normalizeLL (moon_ss_ll);
+    moon_ss_ll.normalize();
     ll2s (moon_ss_ll, moon_c.s, MOON_R+1);
 
     updateSatPath();
@@ -1219,7 +1219,7 @@ bool s2ll (const SCoord &s, LatLong &ll)
         ll.lng_d = 360.0F*((s.x - map_b.x - map_b.w/2)/(float)pan_zoom.zoom + pan_zoom.pan_x)/map_b.w;
         if (core_map != CM_USER)
             ll.lng_d += getCenterLng();
-        normalizeLL(ll);
+        ll.normalize();
 
         } break;
 
@@ -1519,7 +1519,7 @@ void antipode (LatLong &to, const LatLong &from)
 {
     to.lat_d = -from.lat_d;
     to.lng_d = from.lng_d+180;
-    normalizeLL(to);
+    to.normalize();
 }
 
 /* return whether s is over the view_btn_b, including an extra border for fat lines or DX etc

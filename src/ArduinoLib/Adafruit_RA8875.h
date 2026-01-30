@@ -60,12 +60,13 @@ extern const GFXfont Courier_Prime_Sans6pt7b;
 #define	RA8875_MAGENTA	RGB565(255,0,255)
 #define	RA8875_YELLOW	RGB565(255,255,0)
 
-
-// choose 16 or 32 bit hw frame buffer
-#if defined(_USE_FB0)
-    // can find no way to support 32 fb0 on RaspPi5 so always use 16 regardless
-    #define _16BIT_FB
+// honor the build depth
+#if defined(_FB_DEPTH)
+    #if _FB_DEPTH==16
+        #define  _16BIT_FB
+    #endif
 #endif
+
 #if defined(_16BIT_FB)
     typedef uint16_t fbpix_t;
     #define BYTESPFBPIX     2

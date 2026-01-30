@@ -1202,7 +1202,7 @@ void drawDXClusterSpotsOnMap ()
 
 /* find closest spot and location on either end to given ll, if any.
  */
-bool getClosestDXCluster (const LatLong &ll, DXSpot *sp, LatLong *llp)
+bool getClosestDXCluster (LatLong &ll, DXSpot *sp, LatLong *llp)
 {
     // skip if we are not running
     if (!isDXClusterConnected())
@@ -1320,8 +1320,7 @@ const DXSpot *findDXCCall (const char *call)
  */
 bool injectDXClusterSpot (const char *tx_call, const char *rx_call, const char *kHz, Message &ynot)
 {
-    DXSpot fake;
-    memset (&fake, 0, sizeof(fake));
+    DXSpot fake = {};
 
     quietStrncpy (fake.tx_call, tx_call, sizeof(fake.tx_call));
     quietStrncpy (fake.rx_call, rx_call, sizeof(fake.rx_call));

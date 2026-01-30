@@ -138,6 +138,7 @@ typedef enum {
     X(DEBUG_ADIF,       "ADIF")             \
     X(DEBUG_BMP,        "BMP")              \
     X(DEBUG_BC,         "BigClock")         \
+    X(DEBUG_CACHE,      "cache")            \
     X(DEBUG_CONTESTS,   "contests")         \
     X(DEBUG_CTY,        "cty")              \
     X(DEBUG_DXC,        "dxcluster")        \
@@ -150,6 +151,7 @@ typedef enum {
     X(DEBUG_NVRAM,      "NVRAM")            \
     X(DEBUG_NET,        "network")          \
     X(DEBUG_RIG,        "rig")              \
+    X(DEBUG_ESATS,      "esats")            \
     X(DEBUG_SCROLL,     "scroller")         \
     X(DEBUG_WL,         "watchlist")        \
     X(DEBUG_WIFI,       "wifi")             \
@@ -195,6 +197,8 @@ extern bool testPassword (const char *category, const char *candidate_pw);
 extern const char *pw_file;
 extern void NVReadX11Geom (int &x, int &y, int &w, int &h);
 extern void NVWriteX11Geom (int x, int y, int w, int h);
+extern char *strTrimAll (char *str);
+
 
 
 #define N_DIAG_FILES 4

@@ -456,9 +456,9 @@ static bool spotLooksGood (ADIFParser &adif, DXSpot &spot)
 
     // all good, just tidy up a bit
     strtoupper (spot.tx_call);
-    normalizeLL (spot.tx_ll);
+    spot.tx_ll.normalize();
     strtoupper (spot.rx_call);
-    normalizeLL (spot.rx_ll);
+    spot.rx_ll.normalize();
 
     return (true);
 }
@@ -481,7 +481,7 @@ static bool parseADIF (char c, ADIFParser &adif, DXSpot &spot)
         // full init
         memset (&adif, 0, sizeof(adif));
         adif.line_n = 1;
-        memset (&spot, 0, sizeof(spot));
+        spot = {};
 
         // fallthru
 
@@ -494,7 +494,7 @@ static bool parseADIF (char c, ADIFParser &adif, DXSpot &spot)
         // init spot
         if (debugLevel (DEBUG_ADIF, 3))
             Serial.printf ("ADIF: starting new spot scan\n");
-        memset (&spot, 0, sizeof(spot));
+        spot = {};
 
         // init per-spot fields in parser
         adif.qso_date[0] = '\0';

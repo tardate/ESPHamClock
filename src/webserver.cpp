@@ -250,27 +250,27 @@ bool parseWebCommand (WebArgs &wa, char line[], size_t line_len)
                 state = PWC_LOOKING_4_VALUE;                    // now look for value
             } else if (*line == '&') {
                 *line = '\0';                                   // terminate name
-                if (!setWCValue (wa, strtrim(name), NULL, line0, line_len))
+                if (!setWCValue (wa, strTrimAll(name), NULL, line0, line_len))
                     return (false);
                 name = line + 1;                                // start next name
                 value = NULL;                                   // no value yet
             } else if (*line == '\0') {
                 if (name[0] == '\0')
                     return (true);                              // no name at all is ok
-                return (setWCValue (wa, strtrim(name), strtrim(value), line0, line_len));
+                return (setWCValue (wa, strTrimAll(name), strTrimAll(value), line0, line_len));
             }
             break;
 
         case PWC_LOOKING_4_VALUE:
             if (*line == '&') {
                 *line = '\0';                                   // terminate value
-                if (!setWCValue (wa, strtrim(name), strtrim(value), line0, line_len))
+                if (!setWCValue (wa, strTrimAll(name), strTrimAll(value), line0, line_len))
                     return (false);
                 name = line + 1;                                // start next name
                 value = NULL;                                   // no value yet
                 state = PWC_LOOKING_4_NAME;                     // now look for name
             } else if (*line == '\0') {
-                return (setWCValue (wa, strtrim(name), strtrim(value), line0, line_len));
+                return (setWCValue (wa, strTrimAll(name), strTrimAll(value), line0, line_len));
             }
             break;
         }
@@ -1925,14 +1925,14 @@ static bool setWiFiDemo (WiFiClient &client, char line[], size_t line_len)
     if (wa.found[0] && wa.value[0] == NULL) {
         // on
         setDemoMode(true);
-        drawScreenLock();
+        drawDemoRunner();
         strcpy (buf, "Demo mode on\n");
         Serial.print (buf);
 
     } else if (wa.found[1] && wa.value[1] == NULL) {
         // off
         setDemoMode(false);
-        drawScreenLock();
+        drawDemoRunner();
         strcpy (buf, "Demo mode off\n");
         Serial.print (buf);
 
@@ -1947,7 +1947,7 @@ static bool setWiFiDemo (WiFiClient &client, char line[], size_t line_len)
         // turn on if not already
         if (!getDemoMode()) {
             setDemoMode(true);
-            drawScreenLock();
+            drawDemoRunner();
         }
 
         // run it
@@ -4768,12 +4768,12 @@ static bool runDemoChoice (DemoChoice choice, bool &slow, char msg[], size_t msg
         {
             // walk a small collection of cities
             static LatLong demo_ll[] = {
-                {0, 0, -26.2,  28.0},           // Johannesburg, South Africa
-                {0, 0, -22.9, -43.2},           // Rio de Janeiro, Brazi
-                {0, 0,  35.7, 139.7},           // Tokyo, Japan 
-                {0, 0, -33.9, 151.2},           // Sydney, Australia
-                {0, 0,  40.7, -74.0},           // New York City
-                {0, 0,  51.5, - 0.2},           // London
+                LatLong (-26.2,  28.0),       // Johannesburg, South Africa
+                LatLong (-22.9, -43.2),       // Rio de Janeiro, Brazi
+                LatLong ( 35.7, 139.7),       // Tokyo, Japan 
+                LatLong (-33.9, 151.2),       // Sydney, Australia
+                LatLong ( 40.7, -74.0),       // New York City
+                LatLong ( 51.5,  -0.2),       // London
             };
             static int demo_ll_i;
             LatLong &dll = demo_ll[demo_ll_i];
@@ -4907,12 +4907,7 @@ static bool runDemoChoice (DemoChoice choice, bool &slow, char msg[], size_t msg
         break;
 
     case DEMO_EME:
-        ok = findPaneChoiceNow(PLOT_CH_MOON) != PANE_NONE;
-        if (ok) {
-            drawEMETool();
-            initEarthMap();
-            slow = true;                // allow for time spent in EME tool
-        }
+        ok = false;             // no longer resumes by itself
         demoMsg (ok, choice, msg, msg_len, "EME");
         break;
 

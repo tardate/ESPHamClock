@@ -25,7 +25,6 @@ bool dx_info_for_sat;                   // global to indicate whether dx_info_b 
 #define ALARM_DT        (1.0F/1440.0F)  // flash this many days before an event
 #define SATLED_RISING_HZ  1             // flash at this rate when sat about to rise
 #define SATLED_SETTING_HZ 2             // flash at this rate when sat about to set
-#define MAX_TLE_AGE     7.0F            // max age to use a TLE in LEO, scaled by period, days (except moon)
 #define SAT_TOUCH_R     20U             // touch radius, pixels
 #define SAT_UP_R        2               // dot radius when up
 #define PASS_STEP       10.0F           // pass step size, seconds
@@ -62,9 +61,18 @@ typedef enum {
     PS_HASSET,          // down after being up
 } PassState;
 
+// files
+static const char esat_ufn[] = "user-esats.txt";        // name of user's tle file
+static const char esat_sfn[] = "esats.txt";             // local cached file from server
+static const char esat_url[] = "/esats/esats.txt";      // server file URL
+#define MAX_CACHE_AGE   10000                           // max cache age, seconds
+typedef enum {                                          // used by readNextSat()
+    RNS_INIT = 0,                                       // check user's list
+    RNS_SERVER,                                         // check backend list
+    RNS_DONE                                            // checked both
+} RNS_t;
+
 // state
-static const char sat_get_all[] = "/esats.pl?getall=";                  // command to get all TLE
-static const char sat_one_page[] = "/esats.pl?tlename=%s";                      // command to get one TLE
 static Satellite *sat;                  // satellite definition, if any
 static Observer *obs;                   // DE
 static SatRiseSet sat_rs;               // event info for current sat
@@ -598,13 +606,14 @@ static void drawSatTime (bool force, const char *label, uint16_t color, float dt
         return;
 
     // layout
-    const uint16_t fast_h = 12;                                 // spacing for FAST_FONT
-    const uint16_t rs_y = dx_info_b.y+FONT_H + 9;               // below name
+    const uint16_t fast_h = 10;                                 // spacing for FAST_FONT
+    const uint16_t rs_y = dx_info_b.y+FONT_H + 4;              // below name
     const uint16_t azel_y = rs_y + fast_h;
+    const uint16_t age_y = azel_y + fast_h;
 
     // erase drawing area
-    tft.fillRect (dx_info_b.x+1, rs_y-3, dx_info_b.w-2, 2*fast_h, RA8875_BLACK);
-    // tft.drawRect (dx_info_b.x+1, rs_y-3, dx_info_b.w-2, 2*fast_h, RA8875_RED);    // RBF
+    tft.fillRect (dx_info_b.x+1, rs_y-2, dx_info_b.w-2, 3*fast_h+2, RA8875_BLACK);
+    // tft.drawRect (dx_info_b.x+1, rs_y-2, dx_info_b.w-2, 3*fast_h+2, RA8875_GREEN);    // RBF
     tft.setTextColor (color);
 
     // draw
@@ -622,14 +631,21 @@ static void drawSatTime (bool force, const char *label, uint16_t color, float dt
         // build label + time
         char str[100];
         snprintf (str, sizeof(str), "%s %2d%c%02d", label, a, sep, b);
-
-        // draw centered
         uint16_t s_w = getTextWidth(str);
         tft.setCursor (dx_info_b.x + (dx_info_b.w-s_w)/2, rs_y);
         tft.print(str);
 
         // draw az and el
         drawSatAzEl (azel_y);
+
+        // draw age
+        time_t t = nowWO();
+        DateTime t_now = userDateTime(t);
+        DateTime t_sat = sat->epoch();
+        snprintf (str, sizeof(str), "TLE Age %.1f days", t_now-t_sat);
+        uint16_t a_w = getTextWidth(str);
+        tft.setCursor (dx_info_b.x + (dx_info_b.w-a_w)/2, age_y);
+        tft.print(str);
 
     } else {
 
@@ -724,10 +740,9 @@ static bool satEpochOk(const char *name, time_t t)
 
     DateTime t_now = userDateTime(t);
     DateTime t_sat = sat->epoch();
-    float period = sat->period();       // days
 
     // N.B. can not use isSatMoon because sat_name is not set
-    float max_age = strcmp(name,"Moon") == 0 ? 1.5F : (MAX_TLE_AGE * period/(1.5F/24.0F));
+    float max_age = strcasecmp(name,"Moon") == 0 ? 1.5F : maxTLEAgeDays();
 
     bool ok = t_sat + max_age > t_now && t_now + max_age > t_sat;
 
@@ -745,6 +760,111 @@ static bool satEpochOk(const char *name, time_t t)
 
 }
 
+/* each call returns the next TLE from user's file then seamlessly from the backend server.
+ * first time: call with fp = NULL and state = RNS_INIT then leave them alone for us to manage.
+ * we return true if another TLE was found from either source, else false with fp closed.
+ * N.B. if caller wants to stop calling us before we return false, they must fclose(fp) if it's != NULL.
+ * N.B. name[] will be in the internal '_' format
+ */
+static bool readNextSat (FILE *&fp, RNS_t &state,
+char name[NV_SATNAME_LEN], char t1[TLE_LINEL], char t2[TLE_LINEL])
+{
+    // prep for user, then server, then done.
+  next:
+
+    if (state == RNS_INIT) {
+        if (!fp) {
+            fp = fopenOurs (esat_ufn, "r");
+            if (!fp) {
+                if (debugLevel (DEBUG_ESATS, 1))
+                    Serial.printf ("SAT: %s: %s\n", esat_ufn, strerror (errno));
+                state = RNS_SERVER;
+            }
+        }
+    }
+
+    if (state == RNS_SERVER) {
+        if (!fp) {
+            fp = openCachedFile (esat_sfn, esat_url, MAX_CACHE_AGE, 0);     // ok if empty
+            if (!fp) {
+                Serial.printf ("SAT: no server sats file\n");
+                state = RNS_DONE;
+            }
+        }
+    }
+
+    if (state == RNS_DONE)
+        return (false);
+
+
+
+    // find next 3 lines other than comments or blank
+    int n_found;
+    for (n_found = 0; n_found < 3; ) {
+
+        // read next useful line
+        char line[TLE_LINEL+10];
+        if (fgets (line, sizeof(line), fp) == NULL)
+            break;
+        chompString(line);
+        if (line[0] == '#' || line[0] == '\0')
+            continue;
+
+        // assign
+        switch (n_found) {
+        case 0:
+            line[NV_SATNAME_LEN-1] = '\0';
+            strTrimAll(line);
+            strncpySubChar (name, line, '_', ' ', NV_SATNAME_LEN);      // internal name form
+            n_found++;
+            break;
+        case 1:
+            strTrimEnds(line);
+            quietStrncpy (t1, line, TLE_LINEL);
+            n_found++;
+            break;
+        case 2:
+            strTrimEnds(line);
+            quietStrncpy (t2, line, TLE_LINEL);
+            n_found++;
+            break;
+        }
+    }
+
+    if (n_found == 3) {
+
+        if (debugLevel (DEBUG_ESATS, 1)) {
+            Serial.printf ("SAT: found TLE from %s:\n", state == RNS_INIT ? "user" : "server");
+            Serial.printf ("   '%s'\n", name);
+            Serial.printf ("   '%s'\n", t1);
+            Serial.printf ("   '%s'\n", t2);
+        }
+
+    } else {
+
+        // no more from this file
+        if (debugLevel (DEBUG_ESATS, 1))
+            Serial.printf ("SAT: no more TLE from %s\n", state == RNS_INIT ? "user" : "server");
+
+        // close fp
+        fclose (fp);
+        fp = NULL;
+
+        // advance to next state
+        switch (state) {
+        case RNS_INIT:   state = RNS_SERVER; break;
+        case RNS_SERVER: state = RNS_DONE; break;
+        case RNS_DONE:   break;
+        }
+
+        // resume
+        goto next;
+    }
+
+    // if get here one or the other was a success
+    return (true);
+}
+
 /* look up sat_name. if found set up sat, else inform user and remove sat altogether.
  * return whether found it.
  */
@@ -753,7 +873,8 @@ static bool satLookup ()
     if (!SAT_NAME_IS_SET())
         return (false);
 
-    Serial.printf ("SAT: Looking up %s\n", sat_name);
+    if (debugLevel (DEBUG_ESATS, 1))
+        Serial.printf ("SAT: Looking up '%s'\n", sat_name);
 
     // delete then restore if found
     if (sat) {
@@ -761,84 +882,41 @@ static bool satLookup ()
         sat = NULL;
     }
 
-    StackMalloc t1(TLE_LINEL);
-    StackMalloc t2(TLE_LINEL);
-    char buf[sizeof(sat_one_page) + sizeof(sat_name) + 10];
+    // prepare for readNextSat()
+    FILE *rns_fp = NULL;
+    RNS_t rns_state = RNS_INIT;
 
-    WiFiClient tle_client;
-    const int MAX_TRIES = 3;
-    char err_msg[100];
+    // read and check each name
+    char name[NV_SATNAME_LEN];
+    char t1[TLE_LINEL];
+    char t2[TLE_LINEL];
     bool ok = false;
-
-    for (int try_i = 0; !ok && try_i < MAX_TRIES; try_i++) {
-
-
-        // wait a bit before retrying
-        if (try_i > 0)
-            wdDelay(2000);
-
-        // connect
-        if (!tle_client.connect (backend_host, backend_port)) {
-            strcpy (err_msg, "network error");
-            tle_client.stop();
-            continue;
+    char err_msg[100] = "";                     // user default err msg if this stays ""
+    while (!ok && readNextSat (rns_fp, rns_state, name, t1, t2)) {
+        if (strcasecmp (name, sat_name) == 0) {
+            if (!tleHasValidChecksum (t1))
+                snprintf (err_msg, sizeof(err_msg), "Bad checksum for %s TLE line 1", name);
+            else if (!tleHasValidChecksum (t2))
+                snprintf (err_msg, sizeof(err_msg), "Bad checksum for %s TLE line 2", name);
+            else
+                ok = true;
         }
-
-        // query
-        snprintf (buf, sizeof(buf), sat_one_page, sat_name);
-        httpHCGET (tle_client, backend_host, buf);
-        if (!httpSkipHeader (tle_client)) {
-            strcpy (err_msg, "Bad http header");
-            tle_client.stop();
-            continue;
-        }
-
-        // first response line is sat name, should match query
-        if (!getTCPLine (tle_client, buf, sizeof(buf), NULL)) {
-            snprintf (err_msg, sizeof(err_msg), "Satellite %s not found", sat_name);
-            tle_client.stop();
-            continue;
-        }
-        if (strcasecmp (buf, sat_name)) {
-            snprintf (err_msg, sizeof(err_msg), "No match: '%s' '%s'", sat_name, buf);
-            tle_client.stop();
-            continue;
-        }
-
-        // next two lines are TLE
-        if (!getTCPLine (tle_client, (char *) t1.getMem(), TLE_LINEL, NULL)) {
-            strcpy (err_msg, "Error reading TLE line 1");
-            tle_client.stop();
-            continue;
-        }
-        if (!tleHasValidChecksum ((char *) t1.getMem())) {
-            snprintf (err_msg, sizeof(err_msg), "Bad checksum for %s in line 1", sat_name);
-            tle_client.stop();
-            continue;
-        }
-        if (!getTCPLine (tle_client, (char *) t2.getMem(), TLE_LINEL, NULL)) {
-            strcpy (err_msg, "Error reading TLE line 2");
-            tle_client.stop();
-            continue;
-        }
-        if (!tleHasValidChecksum ((char *) t2.getMem())) {
-            snprintf (err_msg, sizeof(err_msg), "Bad checksum for %s in line 2", sat_name);
-            tle_client.stop();
-            continue;
-        }
-
-        // TLE looks good, update name so cases match, define new sat
-        memcpy (sat_name, buf, sizeof(sat_name)-1);    // retain EOS
-        sat = new Satellite ((char *) t1.getMem(), (char *) t2.getMem());
-
-        // yah!
-        ok = true;
     }
 
-    tle_client.stop();
+    // finished with fp regardless
+    if (rns_fp)
+        fclose(rns_fp);
 
-    if (!ok)
-        fatalSatError ("%s", err_msg);
+    // final check
+    if (ok) {
+        // TLE looks good: define new sat
+        sat = new Satellite (t1, t2);
+    } else {
+        if (err_msg[0])
+            fatalSatError ("%s", err_msg);
+        else
+            fatalSatError ("%s disappeared", sat_name);
+    }
 
     return (ok);
 }
@@ -850,6 +928,7 @@ static void showSelectionBox (const SCoord &c, bool on)
     tft.drawRect (c.x, c.y+(CELL_H-CB_SIZE)/2+3, CB_SIZE, CB_SIZE, RA8875_WHITE);
 }
 
+
 /* show all names and allow op to choose one or none.
  * save selection in sat_name, even if empty for no selection.
  * return whether sat was selected.
@@ -857,7 +936,6 @@ static void showSelectionBox (const SCoord &c, bool on)
 static bool askSat()
 {
     #define NO_SAT              (-1)            // cookie when op has chosen not to display a sat
-
 
     // entire display is one big menu box
     SBox screen_b;
@@ -914,35 +992,24 @@ static bool askSat()
     drawStringInBox ("Ok", ok_b, false, RA8875_WHITE);
 
     // prep storage
-    StackMalloc t1(TLE_LINEL);
-    StackMalloc t2(TLE_LINEL);
-    typedef char SatNames[MAX_NSAT][NV_SATNAME_LEN];
-    StackMalloc name_mem(sizeof(SatNames));
-    SatNames *sat_names = (SatNames *) name_mem.getMem();
+    char t1[TLE_LINEL];
+    char t2[TLE_LINEL];
+    char sat_names[MAX_NSAT][NV_SATNAME_LEN];
 
     // n sats we display, may be fewer than total possible if tap to stop early
     int n_sat = 0;
 
-    // open connection
-    WiFiClient sat_client;
-    if (!sat_client.connect (backend_host, backend_port))
-        goto out;
+    // prepare for readNextSat()
+    FILE *rns_fp = NULL;
+    RNS_t rns_state = RNS_INIT;
 
-    // query page and skip header
-    httpHCGET (sat_client, backend_host, sat_get_all);
-    if (!httpSkipHeader (sat_client))
-        goto out;
-
-    // read and display each sat, allow tapping part way through to stop
+    // read up to MAX_NSAT and display each name, allow tapping part way through to stop
     selectFontStyle (LIGHT_FONT, SMALL_FONT);
     for (n_sat = 0; n_sat < MAX_NSAT; n_sat++) {
 
-        // read name and 2 lines, done when eof or tap
-        if (!getTCPLine (sat_client, &(*sat_names)[n_sat][0], NV_SATNAME_LEN, NULL)
-                         || !getTCPLine (sat_client, (char *) t1.getMem(), TLE_LINEL, NULL)
-                         || !getTCPLine (sat_client, (char *) t2.getMem(), TLE_LINEL, NULL)) {
+        // read user's file until it's empty, then read from server
+        if (!readNextSat (rns_fp, rns_state, sat_names[n_sat], t1, t2))
             break;
-        }
 
         // find row and column, col-major order
         int r = n_sat % N_ROWS;
@@ -963,7 +1030,7 @@ static bool askSat()
         }
 
         // draw tick box, pre-selected if it's the current sat
-        if (strcmp (sat_name, (*sat_names)[n_sat]) == 0) {
+        if (strcasecmp (sat_name, sat_names[n_sat]) == 0) {
             showSelectionBox (cell_s, true);
             sel_idx = n_sat;
             sel_s = cell_s;
@@ -974,12 +1041,12 @@ static bool askSat()
         // display next rise time of this sat
         if (sat)
             delete sat;
-        sat = new Satellite ((char *) t1.getMem(), (char *) t2.getMem());
+        sat = new Satellite (t1, t2);
         tft.setTextColor (RA8875_WHITE);
         tft.setCursor (cell_s.x + CB_SIZE + 8, cell_s.y + FONT_H);
-        if (satEpochOk((*sat_names)[n_sat], nowWO())) {
+        if (satEpochOk(sat_names[n_sat], nowWO())) {
             SatRiseSet rs;
-            findNextPass((*sat_names)[n_sat], nowWO(), rs);
+            findNextPass(sat_names[n_sat], nowWO(), rs);
             if (rs.rise_ok) {
                 DateTime t_now = userDateTime(nowWO());
                 if (rs.rise_time < rs.set_time) {
@@ -1017,12 +1084,9 @@ static bool askSat()
 
         // followed by scrubbed name
         char user_name[NV_SATNAME_LEN];
-        strncpySubChar (user_name, (*sat_names)[n_sat], ' ', '_', NV_SATNAME_LEN);
+        strncpySubChar (user_name, sat_names[n_sat], ' ', '_', NV_SATNAME_LEN);
         tft.print (user_name);
     }
-
-    // close connection
-    sat_client.stop();
 
     // bale if no satellites displayed
     if (n_sat == 0)
@@ -1093,17 +1157,18 @@ static bool askSat()
 
   out:
 
-    // close connection
-    sat_client.stop();
+    // one final close in case we didn't read all
+    if (rns_fp)
+        fclose (rns_fp);
 
     if (n_sat == 0) {
-        fatalSatError ("No satellites found");
+        fatalSatError ("%s", "No satellites found");
         return (false);
     }
 
     // set sat_name and whether any selected
     if (sel_idx != NO_SAT) {
-        strcpy (sat_name, (*sat_names)[sel_idx]);
+        strcpy (sat_name, sat_names[sel_idx]);
         return (true);
     } else {
         unsetSat();
@@ -1175,40 +1240,32 @@ static bool checkSatUpToDate (bool *updated)
     if (!obs || !SAT_NAME_IS_SET())
         return (false);
 
-    // base positions on user's idea of now
-    time_t now_wo = nowWO();
+    // do fresh lookup but first capture current epoch to check whether it was updated
+    DateTime e0_dt = sat ? sat->epoch() : DateTime();
+    if (!satLookup())
+        return (false);                         // already posted error
 
-    // check if need to refresh
-    if (sat && satEpochOk(sat_name, now_wo)) {
-
-        // elements good but still update sat_rs if just set
-        if (findPassState(NULL) == PS_HASSET) {
-            findNextPass (sat_name, now_wo, sat_rs);
-            if (updated)
-                *updated = true;
-        } else {
-            // all still good
-            if (updated)
-                *updated = false;
-        }
-
-    } else {
-
-        // need full refresh
-        if (!satLookup())
-            return (false);
-        if (!satEpochOk(sat_name, now_wo)) {
-            fatalSatError ("Epoch for %s is out of date", sat_name);
-            return (false);
-        }
-
-        // compute fresh sat_rs for sure
-        findNextPass (sat_name, now_wo, sat_rs);
-        if (updated)
-            *updated = true;
+    // confirm age ok
+    time_t t = nowWO();
+    if (!satEpochOk(sat_name, t)) {
+        fatalSatError ("Epoch for %s is out of date", sat_name);
+        return (false);
     }
 
-    // ok!
+    // update if epoch changed
+    DateTime e1_dt = sat->epoch();
+    float e_diff = e1_dt - e0_dt;
+    bool new_epoch = e_diff != 0;
+    if (new_epoch) {
+        Serial.printf ("SAT: %s updated because epoch changed by %g days\n", sat_name, e_diff);
+        findNextPass (sat_name, t, sat_rs);
+    }
+
+    // report if care
+    if (updated)
+        *updated = new_epoch;
+
+    // report lookup succeeded regardless of whether elements changed
     return (true);
 }
 
@@ -1296,12 +1353,13 @@ bool setNewSatCircumstance()
     return (ok);
 }
 
-/* like getSatNow() but for our obs now.
+/* handy getSatCir() for right now
  */
 bool getSatNow (SatNow &satnow)
 {
     return (getSatCir (obs, nowWO(), satnow));
 }
+
 
 /* if a satellite is currently in play, return its name, az, el, range, rate, az of next rise and set,
  *    and hours until next rise and set at time t0.
@@ -1394,10 +1452,14 @@ void updateSatPath()
     }
 
     // fill sat_foot
-    DateTime t = userDateTime(nowWO());
+    time_t t_wo = nowWO();
+    DateTime t = userDateTime(t_wo);
     float satlat, satlng;
     sat->predict (t);
     sat->geo (satlat, satlng);
+    if (debugLevel (DEBUG_ESATS, 2))
+        Serial.printf ("SAT: JD %.6f Lat %7.3f Lng %8.3f\n", t_wo/86400.0+2440587.5,
+                                                    rad2deg(satlat), rad2deg(satlng));
     updateFootPrint(satlat, satlng);
     updateClocks(false);
 
@@ -1648,7 +1710,7 @@ bool querySatSelection()
 bool setSatFromName (const char *new_name)
 {
     // remove if "none"
-    if (strcmp (new_name, "none") == 0) {
+    if (strcasecmp (new_name, "none") == 0) {
         if (SAT_NAME_IS_SET()) {
             unsetSat();
             drawOneTimeDX();
@@ -1727,9 +1789,11 @@ bool setSatFromTLE (const char *name, const char *t1, const char *t2)
 bool initSatSelection()
 {
     risetAlarm(BLINKER_OFF);
+    Serial.printf ("SAT: max tle age set to %d days\n", maxTLEAgeDays());
     NVReadString (NV_SATNAME, sat_name);
     if (!SAT_NAME_IS_SET())
         return (false);
+printf ("initSatSelection %s\n", sat_name);     // TODO
     return (setNewSatCircumstance());
 }
 
@@ -1746,7 +1810,7 @@ bool isNewPass()
  */
 bool isSatMoon()
 {
-    return (sat && !strcmp (sat_name, "Moon"));
+    return (sat && !strcasecmp (sat_name, "Moon"));
 }
 
 /* return malloced array of malloced strings containing all available satellite names and their TLE;
@@ -1755,42 +1819,26 @@ bool isSatMoon()
  */
 const char **getAllSatNames()
 {
-    // malloced list of malloced names
+    // init malloced list of malloced names
     const char **all_names = NULL;
     int n_names = 0;
 
-    // open connection
-    WiFiClient sat_client;
-    if (!sat_client.connect (backend_host, backend_port))
-        return (NULL);
+    // prep for readNextSat
+    FILE *rns_fp = NULL;
+    RNS_t rns_state = RNS_INIT;
 
-    // query page and skip header
-    httpHCGET (sat_client, backend_host, sat_get_all);
-    if (!httpSkipHeader (sat_client)) {
-        sat_client.stop();
-        return (NULL);
-    }
-
-    // read and add each name to all_names.
-    // read name and 2 lines, done when eof or tap
+    // read and add each to all_names.
     char name[NV_SATNAME_LEN];
-    char line1[TLE_LINEL];
-    char line2[TLE_LINEL];
-    while (getTCPLine (sat_client, name, NV_SATNAME_LEN, NULL)
-                         && getTCPLine (sat_client, line1, TLE_LINEL, NULL)
-                         && getTCPLine (sat_client, line2, TLE_LINEL, NULL)) {
-        all_names = (const char **) realloc (all_names, (n_names+1)*sizeof(const char*));
+    char t1[TLE_LINEL];
+    char t2[TLE_LINEL];
+    while (readNextSat (rns_fp, rns_state, name, t1, t2)) {
+        all_names = (const char **) realloc (all_names, (n_names+3)*sizeof(const char*));
         all_names[n_names++] = strdup (name);
-        all_names = (const char **) realloc (all_names, (n_names+1)*sizeof(const char*));
-        all_names[n_names++] = strdup (line1);
-        all_names = (const char **) realloc (all_names, (n_names+1)*sizeof(const char*));
-        all_names[n_names++] = strdup (line2);
+        all_names[n_names++] = strdup (t1);
+        all_names[n_names++] = strdup (t2);
     }
 
-    // close
-    sat_client.stop();
-
-    Serial.printf ("SAT: found %d satellites\n", n_names);
+    Serial.printf ("SAT: found %d satellites\n", n_names/3);
 
     // add NULL then done
     all_names = (const char **) realloc (all_names, (n_names+1)*sizeof(char*));
@@ -1883,6 +1931,7 @@ static void showNextSatEvents ()
     #define _SNS_HHMM_W   130                   // width of HH:MM@az columns
     #define _SNS_ROWH     34                    // row height
     #define _SNS_TIMEOUT  30000                 // ms
+    #define _SNS_OKY      12                    // Ok box y
 
     // init scan coords
     uint16_t x = _SNS_LR_B;
@@ -1905,7 +1954,7 @@ static void showNextSatEvents ()
     SBox ok_b;
     ok_b.w = 100;
     ok_b.x = tft.width() - ok_b.w - _SNS_LR_B;
-    ok_b.y = FONT_D;
+    ok_b.y = _SNS_OKY;
     ok_b.h = _SNS_ROWH;
     static const char button_name[] = "Ok";
     drawStringInBox (button_name, ok_b, false, RA8875_GREEN);

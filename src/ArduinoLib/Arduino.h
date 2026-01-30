@@ -59,6 +59,7 @@ extern bool ignore_x11geom;
 
 extern char **our_argv;
 extern char our_make[];
+extern char build_variables[];
 
 extern void capturePasswords (const char *fn);
 

@@ -490,7 +490,7 @@ static void freeCfgTable (CfgTable &ctbl)
 static bool isCfgNameOk (CfgName &cn)
 {
     // clean ends
-    strtrim (cn.name);
+    strTrimAll (cn.name);
 
     // can't be empty
     if (strlen (cn.name) == 0) {

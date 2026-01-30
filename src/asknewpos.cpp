@@ -446,9 +446,7 @@ bool askNewPos (const SBox &b, LatLong &op_ll, char op_grid[MAID_CHARLEN])
     bool ok = false;
     bool cancelled = false;
     LatLong new_ll;
-    char new_grid[MAID_CHARLEN];
-    memset (&new_ll, 0, sizeof(new_ll));
-    memset (new_grid, 0, sizeof(new_grid));
+    char new_grid[MAID_CHARLEN] = "";
     UserInput ui = {
         b,
         UI_UFuncNone,
@@ -518,7 +516,7 @@ bool askNewPos (const SBox &b, LatLong &op_ll, char op_grid[MAID_CHARLEN])
     // pass back if ok
     if (ok && !cancelled) {
         op_ll = new_ll;
-        normalizeLL (op_ll);
+        op_ll.normalize();
         strcpy (op_grid, new_grid);
         return (true);
     } else {

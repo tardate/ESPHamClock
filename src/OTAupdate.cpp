@@ -276,12 +276,18 @@ bool askOTAupdate(char *new_ver, bool show_pending, bool def_yes)
                     // click?
                     if (show_pending && inBox (ui.tap, yes_b)) {
                         drawStringInBox ("Yes", yes_b, true, RA8875_WHITE);
+                        drawStringInBox ("No", no_b, false, RA8875_WHITE);
                         wdDelay(200);
                         finished = true;
                         active_yes = true;
                     }
                     if (inBox (ui.tap, no_b)) {
-                        drawStringInBox (show_pending ? "No" : "Ok", no_b, true, RA8875_WHITE);
+                        if (show_pending) {
+                            drawStringInBox ("No", no_b, true, RA8875_WHITE);
+                            drawStringInBox ("Yes", yes_b, false, RA8875_WHITE);
+                        } else {
+                            drawStringInBox ("Ok", no_b, true, RA8875_WHITE);
+                        }
                         wdDelay(200);
                         finished = true;
                         active_yes = false;

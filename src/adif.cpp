@@ -504,7 +504,7 @@ bool checkADIFTouch (const SCoord &s, const SBox &box)
 
 /* find closest spot and location on either end to given ll, if any.
  */
-bool getClosestADIFSpot (const LatLong &ll, DXSpot *sp, LatLong *llp)
+bool getClosestADIFSpot (LatLong &ll, DXSpot *sp, LatLong *llp)
 {
     return (adif_spots && findPaneForChoice(PLOT_CH_ADIF) != PANE_NONE
                 && getClosestSpot (adif_spots, adif_ss.n_data, NULL, LOME_BOTH, ll, sp, llp));

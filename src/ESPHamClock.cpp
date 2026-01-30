@@ -7,9 +7,10 @@
 
 // clock, aux time and stopwatch boxes
 SBox clock_b = { 0, 65, 230, 49};
-SBox auxtime_b = { 0, 113, 205, 32};
+SBox auxtime_b = { 0, 113, 204, 32};
 SBox stopwatch_b = {149, 93, 38, 22};
-SBox lkscrn_b = {216, 117, 13, 20};     // size must match HC_RUNNER_W/H base size
+SBox lkscrn_b = {217, 118, 11, 16};     // best if odd width
+static SBox demo_b = {204, 121, 11, 13};// N.B. must match runner.pl
 
 // DE and DX map boxes
 SBox dx_info_b;                         // dx info location
@@ -140,6 +141,7 @@ static void drawVersion(bool force);
 static void checkTouch(void);
 static void drawUptime(bool force);
 static void drawRotatingMessage(void);
+static void drawScreenLock(void);
 static void toggleLockScreen(void);
 static void setDXPrefixOverride (const char *ovprefix);
 static void unsetDXPrefixOverride (void);
@@ -464,7 +466,7 @@ void setup()
     // get from nvram even if set prior from setup, geolocate or gpsd
     NVReadFloat(NV_DE_LAT, &de_ll.lat_d);
     NVReadFloat(NV_DE_LNG, &de_ll.lng_d);
-    normalizeLL(de_ll);
+    de_ll.normalize();
     if (!NVReadTZ (NV_DE_TZ, de_tz)) {
         setTZAuto (de_tz);
         NVWriteTZ (NV_DE_TZ, de_tz);
@@ -563,7 +565,7 @@ void setup()
         setTZAuto (dx_tz);
         NVWriteTZ (NV_DX_TZ, dx_tz);
     }
-    normalizeLL (dx_ll);
+    dx_ll.normalize();
     ll2s (dx_ll, dx_c.s, DX_R);
 
     // sat pass circle
@@ -792,6 +794,7 @@ void initScreen()
     initWiFiRetry();
     drawUptime(true);
     drawScreenLock();
+    drawDemoRunner();
 
     // always close so it will restart if open in any pane
     closeGimbal();
@@ -829,7 +832,7 @@ static void checkTouch()
     }
 
     // check lock
-    if (inBox (s, lkscrn_b))
+    if (inBox (s, lkscrn_b) || inBox (s, demo_b))
         runShutdownMenu();
     if (screenIsLocked())
         return;
@@ -839,8 +842,15 @@ static void checkTouch()
     // check all touch locations, ones that can be over map checked first and beware showing PANE_0
     LatLong ll;
     if (inBox (s, view_btn_b)) {
-        // set flag to draw map menu at next opportunity
-        mapmenu_pending = true;
+        if (tt == TT_TAP_BX) {
+            if (mapIsRotating()) {
+                rotateNextMap();
+                scheduleFreshMap();
+            }
+        } else {
+            // set flag to draw map menu at next opportunity
+            mapmenu_pending = true;
+        }
     } else if (!dx_info_for_sat && checkSatMapTouch (s)) {
         // set showing sat in DX box
         dx_info_for_sat = true;
@@ -915,16 +925,16 @@ static void checkTouch()
         }
     } else if (!SHOWING_PANE_0() && !dx_info_for_sat && inCircle(s, dx_marker_c)) {
         newDX (dx_ll, NULL, NULL);
-    } else if (SHOWING_PANE_0() && checkPlotTouch(s, PANE_0)) {
+    } else if (SHOWING_PANE_0() && checkPlotTouch(tt, s, PANE_0)) {
         updateWiFi();
-    } else if (checkPlotTouch(s, PANE_1)) {
+    } else if (checkPlotTouch(tt, s, PANE_1)) {
         updateWiFi();
-    } else if (checkPlotTouch(s, PANE_2)) {
+    } else if (checkPlotTouch(tt, s, PANE_2)) {
         updateWiFi();
-    } else if (checkPlotTouch(s, PANE_3)) {
+    } else if (checkPlotTouch(tt, s, PANE_3)) {
         updateWiFi();
     } else if (inBox (s, NCDXF_b)) {
-        doNCDXFBoxTouch(s);
+        doNCDXFBoxTouch(tt, s);
     } else if (!SHOWING_PANE_0() && checkSatNameTouch(s)) {
         dx_info_for_sat = querySatSelection();
         initScreen();
@@ -961,20 +971,6 @@ static void checkTouch()
     }
 }
 
-/* given the degree members:
- *   clamp lat to [-90,90];
- *   modulo lng to [-180,180).
- * then fill in the radian members.
- */
-void normalizeLL (LatLong &ll)
-{
-    ll.lat_d = CLAMPF(ll.lat_d,-90,90);                 // clamp lat
-    ll.lat = deg2rad(ll.lat_d);
-
-    ll.lng_d = fmodf(ll.lng_d+(2*360+180),360)-180;     // wrap lng
-    ll.lng = deg2rad(ll.lng_d);
-}
-
 /* set new DX location from ll in dx_info.
  * use the given grid, else look up from ll.
  * also set override prefix unless NULL
@@ -992,7 +988,7 @@ void newDX (LatLong &ll, const char grid[MAID_CHARLEN], const char *ovprefix)
     }
 
     // set grid and TZ
-    normalizeLL (ll);
+    ll.normalize();
     if (grid)
         NVWriteString (NV_DX_GRID, grid);
     else
@@ -1015,7 +1011,7 @@ void newDX (LatLong &ll, const char grid[MAID_CHARLEN], const char *ovprefix)
         unsetDXPrefixOverride();
 
     // enable great path unless very close to DE
-    dxpath_time = ERAD_M * simpleSphereDist (dx_ll, de_ll) > DEDX_MINPATH ? millis() : 0;
+    dxpath_time = ERAD_M * dx_ll.GSD(de_ll) > DEDX_MINPATH ? millis() : 0;
 
     // just call initEarthMap??
     drawDXInfo ();
@@ -1040,7 +1036,7 @@ void newDE (LatLong &ll, const char grid[MAID_CHARLEN])
         return;
 
     // set grid and TZ
-    normalizeLL (ll);
+    ll.normalize();
     if (grid)
         NVWriteString (NV_DE_GRID, grid);
     else
@@ -1752,39 +1748,46 @@ void setScreenLock (bool on)
 {
     if (on != screenIsLocked()) {
         toggleLockScreen();
-        // ?? setDemoMode (false);
         if (mainpage_up)
             drawScreenLock();
     }
 }
 
-/* draw the lock screen symbol according to demo and/or NV_LKSCRN_ON.
+/* draw, or erase, the demo runner
+ */
+void drawDemoRunner()
+{
+    fillSBox (demo_b, RA8875_BLACK);
+
+    if (getDemoMode()) {
+
+        // runner icon at full res
+
+        const uint16_t rx = tft.SCALESZ*demo_b.x;
+        const uint16_t ry = tft.SCALESZ*demo_b.y;
+
+        for (uint16_t dy = 0; dy < HC_RUNNER_H; dy++)
+            for (uint16_t dx = 0; dx < HC_RUNNER_W; dx++)
+                tft.drawPixelRaw (rx+dx, ry+dy, runner[dy*HC_RUNNER_W + dx]);
+
+    }
+}
+
+/* draw the lock screen symbol according to NV_LKSCRN_ON.
  */
 void drawScreenLock()
 {
     fillSBox (lkscrn_b, RA8875_BLACK);
 
-    if (getDemoMode()) {
+    uint16_t hh = lkscrn_b.h/2;
+    uint16_t hw = lkscrn_b.w/2;
 
-        // runner icon
-        const uint16_t rx = tft.SCALESZ*lkscrn_b.x;
-        const uint16_t ry = tft.SCALESZ*lkscrn_b.y;
-        for (uint16_t dy = 0; dy < HC_RUNNER_H; dy++)
-            for (uint16_t dx = 0; dx < HC_RUNNER_W; dx++)
-                tft.drawPixelRaw (rx+dx, ry+dy, pgm_read_word(&runner[dy*HC_RUNNER_W + dx]));
+    tft.fillRect (lkscrn_b.x, lkscrn_b.y+hh, lkscrn_b.w, hh, RA8875_WHITE);
+    tft.drawLine (lkscrn_b.x+hw, lkscrn_b.y+hh+2, lkscrn_b.x+hw, lkscrn_b.y+hh+hh/2, 2, RA8875_BLACK);
+    tft.drawCircle (lkscrn_b.x+hw, lkscrn_b.y+hh, hw, RA8875_WHITE);
 
-    } else {
-
-        uint16_t hh = lkscrn_b.h/2;
-        uint16_t hw = lkscrn_b.w/2;
-
-        tft.fillRect (lkscrn_b.x, lkscrn_b.y+hh, lkscrn_b.w, hh, RA8875_WHITE);
-        tft.drawLine (lkscrn_b.x+hw, lkscrn_b.y+hh+2, lkscrn_b.x+hw, lkscrn_b.y+hh+hh/2, 2, RA8875_BLACK);
-        tft.drawCircle (lkscrn_b.x+hw, lkscrn_b.y+hh, hw, RA8875_WHITE);
-
-        if (!screenIsLocked())
-            tft.fillRect (lkscrn_b.x+hw+2, lkscrn_b.y, hw, hh, RA8875_BLACK);
-    }
+    if (!screenIsLocked())
+        tft.fillRect (lkscrn_b.x+hw+2, lkscrn_b.y, hw, hh, RA8875_BLACK);
 }
 
 /* offer menu of DE format options and engage selection
@@ -2317,7 +2320,7 @@ static void runShutdownMenu(void)
 
     // boxes
     uint16_t menu_x = locked ? 150 : 114;       // just one entry if locked
-    uint16_t menu_y = locked ? 120 : 37;        // just one entry if locked
+    uint16_t menu_y = locked ? 105 : 25;        // just one entry if locked
     SBox menu_b = {menu_x, menu_y, 0, 0};       // shrink wrap size
     SBox ok_b;
 
@@ -2338,6 +2341,7 @@ static void runShutdownMenu(void)
         }
 
         setDemoMode (mitems[1].set);
+        drawDemoRunner();
 
         if (mitems[2].set) {
             if (askPasswd ("configurations", true))

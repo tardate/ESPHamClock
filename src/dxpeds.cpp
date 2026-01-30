@@ -736,9 +736,9 @@ static bool retrieveDXPeds (const SBox &box)
             if (!dxpeds)
                 fatalError ("No memory for %d dxpeds", dxp_ss.n_data+1);
             DXPedEntry &de = dxpeds[dxp_ss.n_data++];
-            memset (&de, 0, sizeof(DXPedEntry));
 
             // set fields
+            de = {};
             de.call = strdup (call_f);
             de.url = strdup (url_f);
             de.loc = strdup (loc_f);
@@ -933,7 +933,7 @@ int getDXPeds (char **&titles, char **&dates)
 
 /* return expedition info if s is over one of our pane entries
  */
-bool getPaneDXPed (const SCoord &s, const DXPedEntry *&dxp)
+bool getPaneDXPed (const SCoord &s, DXPedEntry *&dxp)
 {
     // done if s not showing our pane or not in our box
     PlotPane pp = findPaneChoiceNow (PLOT_CH_DXPEDS);
@@ -969,12 +969,12 @@ bool getPaneDXPed (const SCoord &s, const DXPedEntry *&dxp)
 
 /* return pointer to dxpeds closest to ll, within reason
  */
-bool getClosestDXPed (const LatLong &ll, const DXPedEntry *&dxp)
+bool getClosestDXPed (LatLong &ll, DXPedEntry *&dxp)
 {
     int min_i = -1;
     float min_d = 1e10;
     for (int i = 0; i < dxp_ss.n_data; i++) {
-        float d = simpleSphereDist (ll, dxpeds[i].ll);
+        float d = ll.GSD(dxpeds[i].ll);
         if (d < min_d) {
             min_d = d;
             min_i = i;

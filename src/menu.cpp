@@ -797,13 +797,20 @@ bool runMenu (MenuInfo &menu)
  */
 void menuMsg (const SBox &box, uint16_t color, const char *msg)
 {
+    uint8_t *backing_store;
+    if (!tft.getBackingStore (backing_store, box.x, box.y, box.w, box.h))
+        fatalError ("menuMsg '%s' bad pixels capture beneath %d+%d-%dx%d menu", msg, box.x,box.y,box.w,box.h);
+
     selectFontStyle (LIGHT_FONT, FAST_FONT);
     tft.setCursor (box.x + (box.w - getTextWidth(msg))/2, box.y + box.h/3);
     tft.setTextColor (color);
+    fillSBox (box, RA8875_BLACK);
     drawSBox (box, RA8875_WHITE);
     tft.print (msg);
     wdDelay(2000);
-    fillSBox (box, RA8875_BLACK);
+
+    if (!tft.setBackingStore (backing_store, box.x, box.y, box.w, box.h))
+        fatalError ("menuMsg '%s' bad pixels restore beneath %d+%d-%dx%d menu", msg, box.x,box.y,box.w,box.h);
 }
 
 

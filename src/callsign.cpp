@@ -321,13 +321,13 @@ static void runCallsignMenu (void)
 
         // save new messages
         if (ptt && strcmp (new_onair, cs_info.onair)) {
-            (void) strtrim (new_onair);
+            (void) strTrimAll (new_onair);
             Serial.printf ("CALL: new onair: %s\n", new_onair);
             memcpy (cs_info.onair, new_onair, NV_ONAIR_LEN);
             NVWriteString (NV_ONAIR_MSG, cs_info.onair);
         }
         if (strcmp (new_title, cs_info.title)) {
-            (void) strtrim (new_title);
+            (void) strTrimAll (new_title);
             Serial.printf ("CALL: new title: %s\n", new_title);
             memcpy (cs_info.title, new_title, NV_TITLE_LEN);
             NVWriteString (NV_TITLE, cs_info.title);

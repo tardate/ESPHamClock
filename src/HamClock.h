@@ -47,14 +47,15 @@
 
 
 // full res app, map, moon and running man sizes
+// N.B. RUNNER sizes must match runner.pl
 #if defined(_CLOCK_1600x960)
 
 #define HC_MAP_W (660*2)
 #define HC_MAP_H (330*2)
 #define HC_MOON_W (148*2)
 #define HC_MOON_H (148*2)
-#define HC_RUNNER_W (13*2)
-#define HC_RUNNER_H (20*2)
+#define HC_RUNNER_W (11*2)
+#define HC_RUNNER_H (13*2)
 #define BUILD_W 1600
 #define BUILD_H 960
 
@@ -64,8 +65,8 @@
 #define HC_MAP_H (330*3)
 #define HC_MOON_W (148*3)
 #define HC_MOON_H (148*3)
-#define HC_RUNNER_W (13*3)
-#define HC_RUNNER_H (20*3)
+#define HC_RUNNER_W (11*3)
+#define HC_RUNNER_H (13*3)
 #define BUILD_W 2400
 #define BUILD_H 1440
 
@@ -75,8 +76,8 @@
 #define HC_MAP_H (330*4)
 #define HC_MOON_W (148*4)
 #define HC_MOON_H (148*4)
-#define HC_RUNNER_W (13*4)
-#define HC_RUNNER_H (20*4)
+#define HC_RUNNER_W (11*4)
+#define HC_RUNNER_H (13*4)
 #define BUILD_W 3200
 #define BUILD_H 1920
 
@@ -86,8 +87,8 @@
 #define HC_MAP_H 330
 #define HC_MOON_W 148
 #define HC_MOON_H 148
-#define HC_RUNNER_W 13
-#define HC_RUNNER_H 20
+#define HC_RUNNER_W 11
+#define HC_RUNNER_H 13
 #define BUILD_W 800
 #define BUILD_H 480
 
@@ -678,6 +679,10 @@ typedef enum {
     NV_UDPSPOTS,                // whether to allow UDP with rx_call other than our call
     NV_AUTOUPGRADE,             // local hour to upgrade, else -1
 
+    // 235
+    NV_MAXTLEAGE,               // max allowed tle age, days
+    NV_MINLBLDIST,              // minimum labeling distance
+
     NV_N
 
 } NV_Name;
@@ -741,7 +746,7 @@ typedef enum {
     X(PLOT_CH_ADIF,         "ADIF")             \
     X(PLOT_CH_AURORA,       "Aurora")           \
     X(PLOT_CH_DXPEDS,       "DXPeditions")      \
-    X(PLOT_CH_DST,          "DistStormTm")
+    X(PLOT_CH_DST,          "Disturbance")
 
 #define X(a,b)  a,              // expands PLOTNAMES to each enum and comma
 typedef enum {
@@ -778,11 +783,75 @@ typedef struct {
     uint16_t r;
 } SCircle;
 
-// map lat, lng, + radians N and E
-typedef struct {
-    float lat, lng;                     // radians north, east
-    float lat_d, lng_d;                 // degrees +N +E
-} LatLong;
+/* capture lat, lng with some handy related tools.
+ *
+ * only thing I don't like about this is that the need to set the unit vector prevents using const LatLong
+ * when the intent is to promise not to change location.
+ */
+class LatLong
+{
+    public:
+
+        LatLong(void) {
+            lat_set = lng_set = -9.75e10;               // any unlikely value
+            lat = lat_d = lng = lng_d = 0;              // just to be nice
+        }
+
+        LatLong (float latitude_d, float longitude_d) : LatLong() {
+            lat_d = latitude_d;
+            lng_d = longitude_d;
+            normalize();
+        }
+
+        /* direct access -- too late for setters/getters -- that's why we need lat/lng_set
+         */
+        float lat, lat_d;                               // rads and degrees N
+        float lng, lng_d;                               // rads and degrees E
+
+        /* great circle distance between us and ll in rads; mult by ERAD_M to get miles
+         */
+        float GSD (LatLong &ll) {
+            setXYZ();
+            ll.setXYZ();
+            float dx = x - ll.x;
+            float dy = y - ll.y;
+            float dz = z - ll.z;
+            float chord = sqrtf (dx*dx + dy*dy + dz*dz);
+            return (2 * asinf (chord/2));               // convert chord to great circle
+        }
+
+        /* given the _d degree members:
+         *   clamp lat to [-90,90];
+         *   modulo lng to [-180,180).
+         * then fill in the radian members and set up the unit vector too.
+         */
+        void normalize (void) {
+            lat_d = fmaxf(fminf(lat_d,90),-90);         // clamp lat
+            lat = deg2rad(lat_d);
+            lng_d = fmodf(lng_d+(2*360+180),360)-180;   // wrap lng
+            lng = deg2rad(lng_d);
+            setXYZ();
+        }
+
+
+    private:
+
+        // insure vector on unit sphere at lat/lng is ready
+        void setXYZ(void) {
+            if (lat_set != lat || lng_set != lng) {
+                float clat = cosf (lat);
+                x = clat * cosf (lng);
+                y = clat * sinf (lng);
+                z = sinf (lat);
+                lat_set = lat;
+                lng_set = lng;
+            }
+        }
+
+        float lat_set, lng_set;                 // xyz valid iff these match the public values
+        float x, y, z;                          // location on unit sphere
+};
+
 
 
 // timezone info
@@ -916,7 +985,7 @@ typedef enum {
 extern const char *map_projnames[MAPP_N];   // projection names
 
 #define AZIM1_ZOOM       1.1F           // horizon will be 180/AZIM1_ZOOM degrees from DE
-#define AZIM1_FISHEYE    1.15F          // center zoom -- 1 is natural
+#define AZIM1_FISHEYE    2.0F          // center zoom -- 1 is natural
 
 // map grid options
 typedef enum {
@@ -1050,7 +1119,6 @@ extern void setScreenLock (bool on);
 extern void newDE (LatLong &ll, const char grid[MAID_CHARLEN]);
 extern void newDX (LatLong &ll, const char grid[MAID_CHARLEN], const char *override_prefix);
 extern void drawDXPath(void);
-extern void normalizeLL (LatLong &ll);
 extern bool screenIsLocked(void);
 extern time_t getUptime (uint16_t *days, uint8_t *hrs, uint8_t *mins, uint8_t *secs);
 extern void eraseScreen(void);
@@ -1059,7 +1127,7 @@ extern void drawMapTag (const char *tag, const SBox &box, uint16_t txt_color = R
         uint16_t bg_color = RA8875_BLACK);
 extern void setDXPrefixOverride (char p[MAX_PREF_LEN]);
 extern bool getDXPrefix (char p[MAX_PREF_LEN]);
-extern void drawScreenLock(void);
+extern void drawDemoRunner(void);
 extern void fillSBox (const SBox &box, uint16_t color);
 extern void drawSBox (const SBox &box, uint16_t color);
 extern void shadowString (const char *str, bool shadow, uint16_t color, uint16_t x0, uint16_t y0);
@@ -1158,7 +1226,7 @@ extern void drawADIFSpotsOnMap (void);
 extern void loadADIFFile (GenReader &gr, int &n_good, int &n_bad);
 extern void freshenADIFFile (void);
 extern void drawADIFPane (const SBox &box, const char *filename);
-extern bool getClosestADIFSpot (const LatLong &ll, DXSpot *sp, LatLong *llp);
+extern bool getClosestADIFSpot (LatLong &ll, DXSpot *sp, LatLong *llp);
 extern bool checkADIFFilename (const char *fn, Message &ynot);
 extern bool getADIFPaneSpot (const SCoord &ms, DXSpot *dxs, LatLong *ll);
 extern bool onADIFList (const DXSpot &spot, bool chk_dxcc, bool chk_grid, bool chk_pref, bool chk_band);
@@ -1338,7 +1406,7 @@ extern bool getDisplayInfo (uint16_t &percent, uint16_t &idle_min, uint16_t &idl
 extern bool brDimmableOk(void);
 extern bool brOnOffOk(void);
 extern bool found_phot, found_ltr;
-extern void doNCDXFBoxTouch (const SCoord &s);
+extern void doNCDXFBoxTouch (TouchType tt, const SCoord &s);
 
 
 
@@ -1546,7 +1614,7 @@ extern bool getDXClusterSpots (DXSpot **spp, uint8_t *nspotsp);
 extern void drawDXClusterSpotsOnMap (void);
 extern bool isDXClusterConnected(void);
 extern void sendDXClusterDELLGrid(void);
-extern bool getClosestDXCluster (const LatLong &ll, DXSpot *sp, LatLong *llp);
+extern bool getClosestDXCluster (LatLong &ll, DXSpot *sp, LatLong *llp);
 extern bool getDXCPaneSpot (const SCoord &ms, DXSpot *dxs, LatLong *ll);
 extern bool connectDXCluster (void);
 extern const DXSpot *findDXCCall (const char *call);
@@ -1597,8 +1665,8 @@ extern bool updateDXPeds (const SBox &box, bool fresh);
 extern bool checkDXPedsTouch (const SCoord &s, const SBox &box);
 extern int getDXPeds (char **&titles, char **&dates);
 extern void drawDXPedsOnMap (void);
-extern bool getPaneDXPed (const SCoord &ms, const DXPedEntry *&dxp);
-extern bool getClosestDXPed (const LatLong &ll, const DXPedEntry *&dxp);
+extern bool getPaneDXPed (const SCoord &ms, DXPedEntry *&dxp);
+extern bool getClosestDXPed (LatLong &ll, DXPedEntry *&dxp);
 extern void tellDXPedsSpotChanged (void);
 extern void addDXPedsWorked (const DXSpot &s);
 extern void resetDXPedsWorked (void);
@@ -2323,7 +2391,7 @@ extern bool updateOnTheAir (const SBox &box, bool fresh);
 extern bool checkOnTheAirTouch (const SCoord &s, const SBox &box);
 extern bool getOnTheAirSpots (DXSpot **spp, uint8_t *nspotsp);
 extern void drawOnTheAirSpotsOnMap (void);
-extern bool getClosestOnTheAirSpot (const LatLong &ll, DXSpot *sp, LatLong *llp);
+extern bool getClosestOnTheAirSpot (LatLong &ll, DXSpot *sp, LatLong *llp);
 extern bool getOnTheAirPaneSpot (const SCoord &ms, DXSpot *dxs, LatLong *ll);
 extern bool isONTARotating (void);
 
@@ -2438,12 +2506,13 @@ extern uint32_t plot_rotset[PANE_N];       // bitmask of each pane's PlotChoice 
 #define PLOT_ROTWARN_DT        4           // show rotation about to occur, secs
 
 extern void insureCountdownPaneSensible(void);
-extern bool checkPlotTouch (const SCoord &s, PlotPane pp);
+extern bool checkPlotTouch (TouchType tt, const SCoord &s, PlotPane pp);
 extern PlotPane findPaneForChoice (PlotChoice pc);
 extern PlotPane findPaneChoiceNow (PlotChoice pc);
 extern PlotChoice getNextRotationChoice (PlotPane pp, PlotChoice pc);
 extern PlotChoice getAnyAvailableChoice (void);
 extern PlotChoice getAnyAvailablePane0Choice (void);
+extern void forcePaneRotation (PlotPane pp);
 extern bool plotChoiceIsAvailable (PlotChoice ch);
 extern void logPaneRotSet (PlotPane pp, PlotChoice ch);
 extern void logBRBRotSet(void);
@@ -2531,7 +2600,7 @@ extern int getRawBandPathWidth (float kHz);
 extern int getRawBandSpotRadius (float kHz);
 extern void drawPSKPaths (void);
 extern void getPSKSpots (const DXSpot* &rp, int &n_rep);
-extern bool getClosestPSK (const LatLong &ll, DXSpot *sp, LatLong *mark_ll);
+extern bool getClosestPSK (LatLong &ll, DXSpot *sp, LatLong *mark_ll);
 extern bool getMaxDistPSK (const SCoord &ms, DXSpot *sp, LatLong *mark_ll);
 
 
@@ -2905,6 +2974,8 @@ extern bool setRadio (void);
 extern bool UDPSetsDX(void);
 extern bool useUDPSpot (const DXSpot &s);
 extern bool autoUpgrade (int &at_hour);
+extern int maxTLEAgeDays (void);
+extern float minLabelDist(void);
 
 extern void drawToolTipReminder(void);
 
@@ -3200,7 +3271,6 @@ extern void initSpaceWX(void);
  */
 
 extern void solveSphere (float A, float b, float cc, float sc, float *cap, float *Bp);
-extern float simpleSphereDist (const LatLong &ll1, const LatLong &ll2);
 
 
 
@@ -3216,9 +3286,9 @@ extern float simpleSphereDist (const LatLong &ll1, const LatLong &ll2);
 
 typedef bool (*SpotFilter)(const DXSpot *sp);
 
-extern bool getClosestSpot (const DXSpot *list, int n_list, SpotFilter sfp, LabelOnMapEnd which_ends,
-    const LatLong &ll, DXSpot *sp, LatLong *llp);
-extern void drawSpotLabelOnMap (const DXSpot &spot, LabelOnMapEnd txrx, LabelOnMapDot dot);
+extern bool getClosestSpot (DXSpot *list, int n_list, SpotFilter sfp, LabelOnMapEnd which_ends,
+    LatLong &ll, DXSpot *sp, LatLong *llp);
+extern void drawSpotLabelOnMap (DXSpot &spot, LabelOnMapEnd txrx, LabelOnMapDot dot);
 extern void drawSpotPathOnMap (const DXSpot &spot);
 extern void ditherLL (LatLong &ll);
 extern void drawSpotDot (int16_t raw_x, int16_t raw_y, uint16_t radius, LabelOnMapEnd txrx, uint16_t color);
@@ -3323,7 +3393,7 @@ extern void SWresetIO(void);
 extern uint32_t stringHash (const char *str);
 extern char * strtolower (char *str);
 extern char * strtoupper (char *str);
-extern char *strtrim (char *str);
+extern char *strTrimEnds (char *str);
 extern char *strcompress (char *str);
 extern void getTextBounds (const char str[], uint16_t *wp, uint16_t *hp);
 extern uint16_t getTextWidth (const char str[]);
@@ -3582,9 +3652,6 @@ extern void doNCDXFWXTouch (BRB_MODE m);
  * zones.cpp
  *
  */
-
-// uncomment this to show the bounding boxes around each zone
-// #define DEBUG_ZONES_BB
 
 typedef enum {
     ZONE_CQ,
