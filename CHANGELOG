@@ -1,0 +1,1616 @@
+Revision history:
+
+Version 4.22: 2026-01-17
+
+* change: clicking wifi strength now shows a history plot
+* fix: don't offer Moon track in satellite menu
+* fix: make satellite track option persistent
+* fix: satellite name could overlay RSS
+* fix: remove unused watchdog funtion calls
+* fix hopefully: TZ updates could repeat continuously if net fails
+
+Version 4.21: 2025-09-06
+
+* new: support up to two simultaneous satellites
+* new: add Live Spots menu item to choose whether to show paths
+* change: add next rise and set azimuth to Sat pane
+* change: tweak satellite path arrowheads
+* fix possible: TZ updates could repeat continuously if net fails
+
+Version 4.20: 2025-07-06
+
+* fix: NOAA SpaceWx day label color was not consistent
+* fix: add arrows to dashed satellite path
+* fix: Big Clock refresh could leave extra bits
+* fix: avoid versions of gpiod that are too old
+
+Version 4.19: 2025-06-10
+
+* change: add timeline labels beneath NOAA SpaceWx columns
+* fix: next sat pass was not updated after set
+
+Version 4.18: 2025-06-07
+
+* new: support user file of sat TLEs in ~/.hamclock/user-esats.txt
+* new: add Setup option to configure desired max sat TLE age
+* new: add Setup option to set minimum spot label DE distance
+* new: ctrl-click data pane title, map style or NCDXF to force rotation
+* change: EME tool is now full size and remains up until dismissed
+* change: separate Demo and padlock icons
+* change: + in On-The-Air Org shows all selections without rotation
+* change: NOAA SpaceWx pane now spells out scale and category meanings
+* change: show expedition mode if spotted
+* change: add satellite TLE age above pass
+* fix: map info table lookup is now faster to handle larger data sets
+* fix: add Makefile args FB_DEPTH=16/32 and WIFI_NEVER=0/1
+* fix: posting diagnostics worked but menu was broken
+
+Version 4.17: 2025-05-03
+
+* new: add Setup and Stopwatch tooltips, use ctrl-click or middle button
+* new: add Disturbance Storm Time data pane
+* new: add set_and get_gpio RESTful commands
+* change: add option to hide individual DXPeds
+* change: add DX Cluster status indication to DXPeds pane
+* change: require DX Cluster login to include SSID
+* change: add arrows to show satellite path direction
+* change: attempt to infer mode from DX Cluster frequency
+* fix: DXPeds map symbols could overwrite areas such as RSS
+* fix: DXPeds could inappropriately try to start DX Cluster
+* fix: sat pass left bit cruft when built as size 3200 x 1920
+* fix: UDP_sets_DX setting was not persistent
+* fix: DX Cluster CLR and New buttons overlapped
+* fix: ADIF 60m band edge was inconsistent with DX Spider
+* fix: remote update could fail on systems with small memory
+
+Version 4.16: 2025-04-05
+
+* new: add DXPeditions data pane
+* new: add automatic upgrade option
+* new: add get_dxpeds RESTful command
+* new: add RTTY VOACAP mode
+* change: current satellite az and el are now shown above pass
+* change: RESTful set_bmp can now display any image in the map area
+* change: add support for more UDP XML packet formats
+* change: UDP spots may be filtered to only those made by own call
+* fix: more download speed improvements
+* fix: DX Cluster rounding could move spot time into the future
+* fix: DX Cluster spot was updated only if it moved to a different band
+* fix: SpcWx rankings were not initialized if not using Auto
+
+Version 4.15: 2025-02-26
+
+* change: command radio before opening spot Bio page
+* fix: accommodate Alpine linux lacking linux-headers package
+* fix: accommodate the small Pi3 integer types used for disk info
+* fix: significantly reduce live web network load
+* fix: cursor roaming was still finding Live Spots after deselected
+* fix: broaden search for more Inovato wireless devices
+* fix: final solution for stalling DX Cluster pane
+
+Version 4.14: 2025-02-23
+
+* new: add Clouds map style
+* change: add scrolling, Reset and Rename Configuration controls
+* change: Contests pane shows next on top regardless of Scroll dir
+* change: automatically remove old diag and cache files if disk nearly full
+* change: add percent disk full to messages below call sign
+* change: support linux wifi that reports signal strength as percentage
+* fix: Contests pane would not rotate or indicate active correctly
+* fix: web pages are now opened asynchronously
+* fix: possible fix for stalled DX Cluster pane
+* fix: better server load balancing
+* fix: pasting clipboard onto web page dropped space characters
+
+Version 4.13: 2025-02-02
+
+* new: save and restore multiple configurations
+* new: add support for Log4OM UDP messages
+* new: add menu in right pane to select SpcWx parameters or Auto
+* new: add menu in right pane to select DE/DX Wx parameters
+* new: rotator now supports pointing towards long path
+* new: add Setup option to set DX on arrival of UDP logger message
+* change: require call signs to contain at least one digit
+* change: highlight Contests that are in progress and remove when past
+* change: update to 2025-2029 World Magnetic Model
+* change: update band mode boundaries
+* fix: properly orient Moon image if DE is in southern hemisphere
+* fix: DX Cluster pane was not properly erasing old spots
+* fix: call sign panel would flash when PTT activated
+* fix: much faster map and SDO downloads
+* fix: check for disk full
+* fix: add more pampering to dx spider interactions
+
+Version 4.12: 2025-01-01
+
+* fix: WSJT-X parser was broken
+
+Version 4.11: 2024-12-30
+
+* new: add planning tool to find when satellite is up for both DE and DX
+* new: add watch list filters for sub-band modes and against ADIF file
+* new: add support for N1MM and DXLog UDP DE-spotted packets
+* new: add option to rotate between showing call sign and title
+* new: add options to sort ADIF list by band or call
+* change: DX Cluster pane only lists newest spot on a given band
+* change: enforce upper case call sign
+* fix: clicking within tall left pane could still trigger sat name on map
+* fix: better timezone retrying after network error
+* fix: possible fix for getNVMaidenhead invalid 79
+
+Version 4.10: 2024-11-30
+
+* new: tap CPU temperature (if available) for hour and day history graph
+* new: add British Units option to report C, hPa and mi/hr
+* new: add more control options to the Setup page 6 color editor
+* new: mousing over Live Spots bands marks each farthest spot on map
+* new: mousing over SDO or Moon panes marks sun or moon on map
+* new: add support for rigctld --vfo
+* new: screen location and size are saved and restored (X11 only?)
+* change: spots scrolling no longer jumps to front on new arrivals
+* fix: fb0 startup print caused crash and change to 16 bit default
+* fix: PTT message was not editable when using just the GPIO PTT line
+* fix: updating time could recurse if coincided with network error
+* fix: downloading cities list could cause fatal error
+* fix: exiting menu with malformed watch list could cause fatal error
+* fix: do not draw DE-DX path when very close together
+* fix: DX Cluster and On The Air Bio settings were not persistent
+* fix: possible fix for getNVMaidenhead invalid 78
+
+Version 4.09: 2024-10-27
+
+* new: mousing over panes with spots marks them on map and shows info
+* new: can now select an online bio service to open when tapping a spot
+* new: add call sign menu to set any rig PTT message or alternate title
+* new: add Setup option whether to command or just monitor radio
+* change: combine POTA SOTA panes into one ON_THE_AIR and add WWFF
+* fix: set_title did not cooperate with flrig/hamlib PTT ON AIR message
+* fix: show more frequency significant figures where possible
+
+Version 4.08: 2024-09-24
+
+* change: lengthen the DX Cluster command fields
+* fix: Live Spots RBN could fail for certain conditions
+* fix: DX Cluster could report 0s age for spots near midnight UTC
+* fix: rigctld/rotctld/flrig could randomly turn On
+* fix: demo mode failed when choosing VOACAP TOA or REL map style
+
+Version 4.07: 2024-09-22
+
+* new: hamlib and flrig now poll PTT to control ON THE AIR
+* new: automatically track Daylight Savings Time
+* new: allow selecting several max DX Cluster spot ages
+* new: show CPU temperature beneath call sign, if possible
+* new: add Auto SpcWx option to turn on DRAP or Aurora map when active
+* new: support direct GPS NMEA serial connection as another time source
+* change: remove space weather ranking option, now just always on
+* change: the Setup color editor now allows direct keyboard RGB entry
+* change: lengthen the NTP and GPSD host fields
+* change: remove wifi creds from Setup for all systems except fb0
+* change: VOACAP DE-DX TOA/REL maps now independent and persistent
+* fix: DX Cluster connection could break after first disconnect
+* fix: time zone resolution improved from 50 miles to 500 ft
+* fix: watch-list states were not persistent across restart
+* fix: tweak vertical text centering in listing panes
+* fix: Done button on Setup page 7 was broken
+* fix: failed cty download could cause fast retry loop
+* fix: main stopwatch icon could be On if alarm time before Now
+* fix: FreeBSD 14.1 lint
+
+Version 4.06: 2024-08-03
+
+* change: longer POTA/SOTA watch lists and ADIF file name
+* fix: better error message when SOTA or POTA feeds are down
+* fix: invalid ADIF file name could cause crash
+
+Version 4.05: 2024-08-01
+
+* new: the ADIF file name can now be edited in the pane menu
+* new: scroll controls show whether Red watch list spots are out of view
+* fix: DX Cluster pane failed if last spot aged past 1 hour
+* fix: allow an Off watch list to be empty
+* fix: watch list editor broke when inserting into already-full buffer
+
+Version 4.04: 2024-07-26
+
+* new: multiple background maps can now be selected to rotate
+* new: add support for VE7CC CC DX cluster nodes
+* new: DX Cluster, ADIF, SOTA and POTA now have separate watch lists
+* new: watch lists can now be edited within their respective pane menus
+* new: watch lists can now contain frequency ranges
+* new: ADIF pane can now be sorted by age or distance
+* new: Stopwatch daily alarm can now be either local or UTC timezone
+* new: show count of live web connections beneath padlock
+* new: can now select map or entire display be rendered in shades of gray
+* change: Live Spots now looks throughout DE's 4 character grid for spots
+* change: remove ADIF limit and show count of fails with details in log
+* change: remove all scroll limits except Cluster spot age to 1 hour
+* change: clicking anywhere outside a menu functions acts the same as Cancel
+* change: version change list is now scrollable if too long to show all
+* change: plotting now uses 6-character grid squares for improved accuracy
+* change: give priority to spots over cities in cursor info table
+* fix: usb-i2c, shutdown and reboot all broke after RPi OS upgrade
+* fix: improve map downloading performance
+* fix: SDO and Moon panes did not refresh after full screen init
+* fix: remove liveweb read-only marker when not showing main page
+* fix: remove city dots under cursor info box
+* fix: some build sizes did not make room for 5-digit rigctl/flrig port
+* fix: BME readings were not saved properly while showing WiFi meter
+* fix: DX Cluster pane can now be rotated same as other pane choices
+
+Version 4.03: 2024-06-09
+
+* fix: POTA/SOTA panes were not updating automatically
+
+Version 4.02: 2024-06-08
+
+* new: add real-time MUF_RT map style
+* new: click Moon pane for option to open 360 degree movie
+* change: DX shortcut key is now Control or Meta, not Shift or Caps-lock
+* fix: VOACAP pane was not updated when changing DX
+* fix: Live Spots pane was not updating automatically
+* fix: possible crash when setting date format to DMY
+* fix: widen Setup Lng field to hold 'W' at 1600x960, eg, for CN85
+* fix: remove map menu "busy" ok left visible over curved projections
+
+Version 4.01: 2024-06-01
+
+* new: tap RSS box to open feed's main web page
+* new: add option on Setup page 5 to select pane rotation periods
+* new: add option on Setup page 5 whether to display public IP
+* new: add RESTful command set_panzoom
+* new: wifi meter tracks min and max RSSI since program started
+* new: show marker below padlock when live web connection is read-only
+* change: tap map with Button2 or Button1+shift to set DX without menu
+* change: map popup reports current zoom factor, select any to change
+* fix: address a rare issue with how alarms interacted with main page
+* fix: show new DX/DE path even when zooming
+* fix: better accommodation of custom DX cluster prompts
+
+Version 4.00: 2024-05-11 First release without support for ESP8266
+
+* new: add a one-time alarm facility (in addition to daily)
+* new: click a Contest entry to set alarm or display its web page
+* new: add watch list for POTA SOTA and ADIF (similar to DX cluster)
+* new: add port 8082 for read-only Live web connections; change with -r
+* change: click ADIF row to set DX, click file name to re-read
+* change: RESTful set_touch?x&y; must lie outside the map; remove hold
+* change: last of the click-hold functions replaced by menus
+* fix: use shorter temporary file names for encrypted file systems
+* fix: ADIF now again shows up to 1000 file entries
+* fix: do not modify DE TZ setting when using gpsd follow
+
+Version 3.10: 2024-04-23 Last release supporting ESP8266
+
+* fix: more combinations of space weather could cause a crash on ESP
+* fix: dx cluster command on/off states not saved properly
+
+Version 3.09: 2024-04-22
+
+* fix: handle a bogus dx cluster spot format that would cause a fatal error
+* fix: certain combinations of space weather could cause a crash on ESP
+
+Version 3.08: 2024-04-20
+
+* fix: crash if Contest pane is showing dates and "Scroll length?" is 25
+
+Version 3.07: 2024-04-20
+
+* new: add Mercator pan and zoom and Robinson pan (not ESP)
+* new: add saving and loading two color palettes plus pskreporter (not ESP)
+* new: scrolling data panes may now be assigned to overlay DE+DX
+* new: add data pane choice for 24 hour plot of Aurora chances
+* new: add separate direct and web full screen Setup options
+* new: alternately show public and local IP addresses
+* new: DE and DX panels can be combined as a fourth data pane
+* change: DX Cluster only limits server connection rate (not user)
+* change: DX Cluster is now allowed in Pane 1 if New DX Wx? is No
+* change: Setup page 6 color values can be tapped to change by +- 1
+* fix: tap areas that open web pages now work from web view also
+* fix: reduced jaggies in Robinson projection
+* fix: pane rotation could stall when used with ranked space weather
+
+Version 3.06: 2024-03-16
+
+* new: add option whether to sort space wx indices by greatest impact
+* new: add option whether to temporarily show wx for new DX or DE
+* new: add set_bmp RESTful command to load a bmp file into any pane
+* new: DX Cluster watch list state may now be On, Off or Only
+* change: add two mini-pages for more DX Cluster commands
+* fix: improve extracting DX location and prefix from portable callsigns
+* fix: RPi 5 GPIO and DSI 7" touchscreen fixes and disable setting WiFi
+* fix: clicking after idle could engage full brightness instead of user max
+* fix: VOACAP REL and TOA maps used Weather's scale if it was set as style
+* fix: improve restarting via liveweb connection
+
+Version 3.05: 2024-02-10
+
+* new: add Setup page 3 option to use OS for time instead of NTP
+* new: add -p command line option to set passwords, see FAQ 52
+* new: add support for WSJT-X multicast network addresses
+* new: add support for true full screen in web view on most browsers
+* change: replace Mollweide map projection with Robinson
+* change: force entering Setup if any values are invalid
+* fix: accept ~ in the ADIF file name as a shorthand for $HOME
+
+Version 3.04: 2024-01-20
+
+* fix: incorrect enum caused buffer overrun
+
+Version 3.03: 2024-01-20
+
+* new: DX Cluster pane now supports AR-Cluster nodes
+* new: add Setup option to choose scrolling bottom-up or top-down
+* new: add Setup option to choose number of unseen scrolling lines
+* change: DX Cluster pane on ESP no longer plots or shows additional info
+* fix: DX Cluster locations no longer use show/heading command
+* fix: DX Cluster pane now updates spot ages even without new arrivals
+* fix: RESTful set_newde did not accept callsign
+* fix: -e and -w command line options would not accept -1 to disable
+
+Version 3.02: 2024-01-02
+
+* new: IO changes to support USB-I2C bridge -- See User Guide pages 11-12
+* new: add DX watch list
+* new: add DX times to grayline planning tool
+* new: VOACAP pane adds powers 5 50 and 500 W
+* new: allow correcting time zone offsets by 15 or 30 minutes
+* change: RESTful set_senscorr now also applies correction to live data
+* change: DX Cluster login name must contain DE call
+* change: DX Cluster logins are limited to a max of 10 per hour
+* fix: certain labels could be drawn within RSS area
+* fix: keyboard cursor control now works for fb0
+* fix: RESTful set_rss?file was dropping last line
+
+Version 3.01: 2023-10-14
+
+* new: ADIF pane lists and maps QSOs in file set on Setup page 3
+* new: tap right half of VOACAP pane to show world map of TOA at DE
+* change: keyboard cursor control now requires use of -y (see FAQ 49)
+* change: remove Contest pane's menu, just tap center to toggle dates
+* fix: malformed SOTA/POTA spots could draw labels outside the map area
+* fix: ESP reduces RAM by enforcing max of 1 hi-mem pane with satellite
+* fix: backwards time just turns on the big ? rather than being fatal
+
+Version 3.00: 2023-09-16
+
+* new: add Mollweide equal-area map projection
+* new: add Spot labels "Dots" option in Setup page 5
+* new: add option in Contests pane to show date/time on a 2nd line
+* change: split On The Air into separate independent POTA and SOTA panes
+* change: all Spot panes and map markings now use Setup pg 6 band colors
+* change: rename RESTful API set_mercenter to set_mapcenter
+* fix: ensure screen is on at full brightness when posting a fatal error
+* fix: post a fatal error if time ever runs backwards (!!)
+
+Version 2.99: never released
+
+Version 2.98: never released
+
+Version 2.97: 2023-08-08
+
+* fix: multiple ENV choices in one pane did not rotate correctly
+
+Version 2.96: 2023-08-05
+
+* new: add annotations to SDO pane (analogous to Moon pane)
+* new: tap lower-left corner of SDO pane to show DE gray line timeline
+* new: show time until next event below satellite name on map (not ESP)
+* change: allow setting DE location from any clock style
+* change: tweak DRAP scale marker
+* fix: retry if satellite lookup fails
+* fix: disable Pane 1 touches while showing the temporary WX
+* fix: set live web ws/wss to match http/https protocol (tnx WK2X)
+* fix: DE-DX path could be clipped incorrectly in Azim One projection
+
+Version 2.95: 2023-07-08
+
+* new: show rotator azimuth beam on main map
+* new: add set_rotator RESTful API, see FAQ 42
+* new: mark DRAP map scale with current maximum
+* change: show over-map messages only if error (ESP still shows progress)
+* fix: better noise immunity detecting whether photoresistor is installed
+* fix: tweak pixel alignment in DX panel and map border
+* fix: menus could interrupt map in mid draw
+
+Version 2.94: 2023-06-25
+
+* new: add solar flux and sunspot number history graphs
+* fix: update all DXCC VP8 to VP0 except Falkland Islands
+* fix: sat display was corrupted if time disconnected or at certain uptimes
+
+Version 2.93: 2023-06-09
+
+* new: add Solar magnetosphere Bz and Bt pane option
+* new: add option to show next satellite rise/set times in Big Clock
+* change: exchange SSN for Bz in Spc Wx summary panel
+* change: roving weather shows local conditions instead of wind
+* change: revisit DE analog clock face
+* fix: RPi satellite LED now works while showing DX info and Big Clock
+* fix: the label was misplaced when stopping the sat table early on ESP
+* fix: Moon image not updated if it was the only option chosen for a pane
+
+Version 2.92: 2023-05-13
+
+* new: roving cursor box now shows local weather stats
+* new: added DE and DX weather options in NCDXF pane
+* change: Live Spots age can now be set as short as 15 minutes
+* change: Show Path? Setup option can now be set to No, Thin or Wide
+* change: RPi ONAIR pin 40 now sets colors to white-on-red
+* fix: dx cluster heartbeat now sends ping if no activity after 10 minutes
+* fix: lat/lng reported to dx cluster could round the wrong direction
+* fix: a grounded ESP ADC was falsely interpreted as a photoresistor
+* fix: ensure dx spot labels are always on top of paths
+* fix: Moon pane terminator not updated correctly after manual time change
+
+Version 2.91: 2023-04-09
+
+* new: tweaks to support new web proxy, see User Contrib
+* change: set_title and set_mapcolor RESTful API updates, see FAQ 42
+* change: Show Paths Setup option moved to page 5
+* change: Photo R no longer supports opposite display and room brightness
+* fix: path thickness now decreases automatically with count
+
+Version 2.90: 2023-03-25
+
+* new: add real-time Weather map style
+* new: add sort options to the On-The-Air pane
+* new: show how many more lines are available in pane scroll controls
+* new: Setup now also allows setting DE using a grid locator
+* new: add set_screenlock RESTful API command
+* new: add -c option to disable all touch events from web interface
+* change: rescind ability to automatically set DX from WSJT-X spots
+* fix: clean up stray pixels that could appear in DX Cluster pane
+* fix: reduce load on DX spider servers that run on RPi with microSD
+* fix: use more efficient WebSocket for web interface
+
+Version 2.89: 2023-02-25
+
+* new: add Pane choice to list upcoming weekend Contests
+* new: add Pane choice to list real-time POTA or SOTA activators
+* change: add more SDO images and consolidate into one Pane submenu
+* change: remove STEREO-A Pane because it is nearing solar conjunction
+* fix: ESP was erasing idle NCDXF beacons multiple times
+* fix: incorrect 2^32 time rollover every 49 days (broken in V2.87)
+
+Version 2.88: 2023-02-14
+
+* new: VOACAP pane mode may now be set to CW SSB AM WSPR FT8 or FT4
+* change: scale the allowed max satellite TLE age by period
+* fix: brightness control could leave zombie processes
+
+Version 2.87: 2023-02-02
+
+* new: add Reverse Beacon Network option to Live Spots
+* new: add get_livespots.txt web RESTful API command (not ESP)
+* fix: Big Clock AM/PM indicator did not change passing through noon
+
+Version 2.86: 2022-12-25
+
+* new: Live Spots can report farthest spots and mark each band on map
+* new: add more Setup options so most paths may be drawn dashed
+* new: add get_livestats.txt and get_voacap.txt web commands
+* change: live web interface moved to port 8081; see FAQ 14 and 42
+* change: DX-DE distance unit now uses Setup's Units instead of its own
+* fix: live web now supports multiple browser windows from same IP address
+* fix: improve gpsd response parsing
+* fix: accommodate SWPC Planetray K data format change
+
+Version 2.85: 2022-10-21
+
+* new: can now select Live Spots age up to 24 hours
+* new: add "Set DX?" Setup option to reinstate setting DX from FT8 spots
+* new: add calendar day labels and Setup option to start weeks on Monday
+* change: simplify Setup prompts for WSJT
+* change: increase menu and cursor fade timeouts to 30 seconds
+* change: increase allowed dPres to accommodate larger MSL corrections
+* change: cursor table for spots now shows age, not SNR
+
+Version 2.84: 2022-09-17
+
+* new: add option to report magnetic or true bearings in Setup page 5
+* new: add Live Spots pane for ESP too (but still no map paths)
+* new: add Setup option in page 6 to draw dashed satellite path
+* new: add set_livespots web command
+* change: can now also toggle VOACAP short/long path within its pane
+* change: cursor table for spots shows bearing/distance, not lat/lng
+* change: add small fisheye lens effect to center of Azim One projection
+* fixed: silent NCDXF map symbols could cause gaps in grid and path lines
+* fixed: minor tweaks to Live Spots
+
+Version 2.83: 2022-09-04
+
+* new: add Live Spots _by_ DE (in addition to _of_ DE added in V2.81)
+* new: cursor info table shows details of close Live or DX spot
+* new: can now define each band path color in Setup
+* change: wsjt-x ft8 spots no longer automatically set DX
+* change: NCDXF beacons remain on as long as in rotation set
+
+Version 2.82: 2022-08-29
+
+* fix: memory allocation error if no Live Spots
+
+Version 2.81: 2022-08-27
+
+* new: add map grid options for azimuthal, CQ and ITU zones (not ESP)
+* new: add map view option for single-globe azimuthal projection
+* new: show PSKReporter or WSPR spots from DE call or grid (not ESP)
+* new: can now select multiple rotation choices in NCDXF pane
+* new: add button to clear DX cluster spot list
+* new: add set_mercenter and set_mapcolor web commands
+* change: Setup color control now uses RGB sliders instead of wheel
+* change: replace web-only flag -x with new Makefile targets
+* change: DX Cluster paths are now colored per band
+* fix: change ESP Arduino IDE lwIP build option for better WAN performance
+* fix: better mobile device web support
+
+Version 2.80: 2022-07-15
+
+* new: menu below UTC for JD, MJD, DOY, Solar, Sidereal and UNIX time
+* new: option to display Sidereal time in digital Big Clock
+* new: add web commands set_time?change and set_auxtime (see FAQ)
+* fixed: infinite recursion if sat never rises again after current pass
+
+Version 2.79: 2022-06-18
+
+* fixed: 30% faster live web view performance
+* fixed: DX pane sat times were not restored immediately after menu close
+
+Version 2.78: 2022-05-22
+
+* new: live web interface -- see FAQ
+* new: add option to enter up to 4 DX Cluster filter commands
+* new: add option to draw DX Cluster spot paths on map (not ESP)
+* new: add set_cluster web command
+* new: Cluster pane retains some spot history accessed with scroll arrows
+* change: absorb set_new{de/dx}grid into set_new{de/dx} web commands
+* fixed: disallow Cluster on pane 1 to avoid disconnect during transient WX
+* fixed: moved NCDXF beacon VE8AT to Inuvik, NWT, Canada
+
+Version 2.77: 2022-04-17
+
+* new: can now choose BME280 env stats option in NCDXF pane
+* new: can now set a DX Cluster login separate from call sign
+* new: added hamlib's rigctld and w1hkj's flrig for DX cluster rig control
+* new: added a GPSD option for continuous location update
+* change: added atmospheric pressure and trend arrow to WX panes
+* change: added sun rise and set times to annotated analog DE format
+* change: use a menu to adjust time rather than screen hot spots
+* change: rotator pane now shows axis angles graphically
+* change: reorganized Setup pages
+* change: DX Cluster connections now send set/nohere
+* change: DX Cluster may not be used with other choices in same pane
+* change: added timezone argument to set_newde/dx web commands
+* change: moved get_stopwatch web command functionality into get_config
+* fixed: accept "localhost" as a host name in Setup
+* fixed: some LEDs not always turned off appropriately
+
+Version 2.76: 2022-03-15
+
+* fixed: GPIO was not being detected correctly on RPi buster (bullseye ok)
+
+Version 2.75: 2022-03-12
+
+* new: added control pane and setup for hamlib's rotctld
+* change: disable DX and DE antipode map markers while showing a satellite
+* change: WiFi RSSI threshold now -65 dBm
+* fixed: display on/off control stopped working on some RPi with HDMI
+
+Version 2.74: 2022-02-12
+
+* new: added key space weather stats option in NCDXF pane
+* new: added several new options in Big Clock
+* fixed: improved stability of WiFi RSSI readings and meter
+* fixed: improved map names algorithm, and changed menu to Cities
+* fixed: added timeout if gpsd daemon connects but has no signal
+* fixed: restore missing Cluster Map? prompt in Setup page 2
+
+Version 2.73: 2022-01-15
+
+* new: added a Setup option to choose DMY, MDY or YMD date formats
+* new: added a real-time WiFi RSSI signal strength meter
+* change: STEREO pane annotation now in red
+* change: use a menu for options when DX pane shows satellite info
+* change: thinner map scale bar
+* change: reduce ESP map update rates to conserve FLASH write wear
+
+Version 2.72: 2021-12-18
+
+* new: added Aurora probability map style
+* change: show current map style in map view menu button
+
+Version 2.71: 2021-12-11
+
+* new: added MUF, Maximum Useable Frequency, map style
+* new: added web command set_defmt to set DE pane format
+* change: RPi satellite GPIO blinks @ 10 Hz for one minute before setting
+* change: added frequency column to VOACAP band conditions pane
+* change: added more effects in Demo mode
+* fixed: web command set_alarm had wrong attribute keyword
+* fixed: DRAP pane processing could drop data
+* fixed: dx spots could be drawn inside RSS box
+
+Version 2.70: 2021-11-26
+
+* new: tap Moon pane to show EME planning tool between DE and DX
+* new: added 12 and 24 hr digital formats for DE time
+* new: tap VOACAP pane timeline to toggle between DE or UTC labels
+* new: web command set_rss to display arbitrary text in RSS box -- see web FAQ
+* change: all Big Clock options now in one convenient menu
+* change: VOACAP graph is shifted so "now" is always in the left column
+* change: DE and DX time zone offsets are now adjusted using a menu
+* change: web command get_sensors.txt takes fresh reading each time
+* fixed: RPi Bullseye release changed DSI display brightness control
+* fixed: dx cluster was not restored properly if enter shutdown then resume
+* fixed: accommodate manditory URL encodings as of curl version 7.78
+* fixed: remove redundant Grid option "None" from map View menu
+
+Version 2.69: 2021-10-16
+
+* new: added a 24-hour alarm clock, see User Guide page 7
+* new: VOACAP pane now shows full 24 hour path reliability graph
+* new: tap analog Big Clock near 3 o'clock to toggle showing second hand
+* change: WiFi RSSI shown in red if less than -60 dBm
+* fixed: DRAP scale was getting drawn with VOACAP map
+* fixed: map view menu now includes VOACAP band if that map is active
+* fixed: improve BME280 retry when connection is lost temporarily
+* fixed: the restart menu could be blank
+
+Version 2.68: 2021-09-11
+
+* fixed: DX Cluster could fail to restart after temporary connection loss
+* fixed: ENV Pressure y axis label would overflow in metric mode >= 1000 hPa
+* fixed: added pane menu Ok button busy indication
+
+Version 2.67: 2021-09-06
+
+* new: STEREO-A pane option to show solar prominences 2 days in advance
+* new: tap satellite pass graphic for table of future passes
+* new: each Pane menu now allows selecting any collection to rotate
+* new: Setup Page 1 can specify any longitude for Mercator map center
+* new: roving cursor report includes prefix and city names (not ESP)
+* new: long-tap on UTC month or date toggles format between Day-Of-Year
+* change: tapping VOACAP power now presents a small menu for direct selection
+* change: web commands also support more flexible pane selection
+* fixed: entering 180 east longitude created invalid grid
+* fixed: improved the DRAP frequency scale graphic
+* fixed: better map download progress messages
+* fixed: detect and prevent multiple instances from corrupting eeprom file
+
+Version 2.66: 2021-08-08
+
+* new: tap DE or DX lat, long or grid to directly edit these fields
+* new: user definable map grid color
+* new: Countdown timer has its own plot pane (available only if counting down)
+* new: add bearing and distance to roving cursor info box (not ESP)
+* new: tapping lower portion of an ENV plot rotates to just another ENV
+* new: Demo mode in Setup causes random HamClock changes every 30 s
+* change: satellite LED blinks for 1 min before rise then stays on until set
+* change: a few new and changed web commands; see FAQ
+* change: offer reboot and shutdown if in full screen
+* fixed: don't change DE unless lat or lng are actually edited in Setup
+* fixed: slightly expand VOACAP 20m pane active touch area
+* fixed: web server retry tried to reuse same port without closing it first
+
+Version 2.65: 2021-07-04
+
+* fixed: bug displaying SDO images in larger formats
+
+Version 2.64: 2021-07-03
+
+* new: 24 hour DRAP plot of max frequency absorption
+* change: Solar wind plot period 24 hours to match DRAP and X-Ray
+
+Version 2.63: 2021-06-18
+
+* new: add pane option to rotate selection automatically every 30 seconds
+* new: add map View menu option to not darken Earth night side
+* new: add local time to roving cursor info box (not ESP)
+* new: add Setup color selectors for short and long propagation paths
+* fixed: Kp plot was offset by 3 hours
+* fixed: RPi countdown LEDs were not always properly initialized
+* fixed: map View menu could disengage VOACAP background
+* fixed: change time zone for a town in Argentina from UTC-4 to -3
+
+Version 2.62: 2021-05-23
+
+* new: real-time D layer absorption map style option
+* new: collect all map style options in one View menu
+* new: add web command set_mapview to control the new View menu
+* new: countdown can now be controlled from within Big Clock
+* new: include local weather data in web commands get_de and get_dx
+* change: move countdown value from Setup to Stopwatch
+* change: show all roving mouse coords for all grid styles (not ESP)
+* fixed: rare error when changing map style
+
+Version 2.61: 2021-04-10
+
+* new: support up to 2 BME280 on same I2C bus at addresses 76 and/or 77
+* new: display roving mouse coordinates over map (not ESP)
+* new: tap hours in digital Big Clock to toggle 12 or 24 hour format
+* change: RPi output pin 38 cycles at 1/2 Hz before sat rises
+* change: set_displayTimes and get_config updated for daily on/off settings
+* fixed: Kp plot min y was not clamped to 0
+* fixed: don't reject NTP sites that respond in < 1 ms
+* fixed: corrected time zone along the coast near Barcelona Spain
+* fixed: on/off times table was not always initialized properly
+
+Version 2.60: 2021-03-21
+
+* new: on/off times can be set for each day of the week in Setup page 3
+* new: options to show day and date with Big Clock
+* new: optional digital version of Big Clock
+* changed: move plot titles across the top and improve labels
+* changed: GUI cursor is now red and disappears when inactive (same as old fb0)
+* changed: Big Clock sec hand jumps to each second like a battery clock
+* fixed: Stopwatch and Big Clock honor brightness controls
+* fixed: get_spacewx.txt output botched if Space_Wx never assigned to a pane
+* fixed: removed option to turn off GUI Cursor -- replaced by disappearing cursor
+* fixed: fullscreen could incorrectly default to yes
+* fixed: set_newdegrid web command required extra trailing space
+
+Version 2.59: 2021-02-27
+
+* new: add optional date and DE weather to Big Clock
+* new: add Solar Wind option -- useful for predicting auroras
+* new: setting RPi input pin 40 low temporarily replaces call text with ON THE AIR
+* new: RPi output pin 38 is driven hi for 1 minute before satellite rise or set
+* new: add set_title web command to temporarily set call text and colors
+* change: add NOAA space weather and Solar Wind to get_spacewx.txt web command
+* fixed: blinking symbols when at left edge of map
+* fixed: gpsd could be sent very fast repetitive queries
+
+Version 2.58: 2021-02-18
+
+* new: tap near pane top to directly select any choice from popup menu
+* new: added SDO 193 A image which shows coronal holes better
+* new: added full screen GUI option in Setup page 4 -- fb0 is now legacy only
+* new: added get_spacewx.txt web command
+* change: Big Clock warns if UTC is offset or time source is not updating
+* change: RPi stdout messages now go to file $HOME/.hamclock/diagnostic-log.txt
+* change: RPi installation instructions now use /usr/local/bin -- see Desktop tab
+* fixed: misc Big Clock issues
+
+Version 2.57: 2021-01-24
+
+* new: full-screen analog Big Clock, available from within Stopwatch page
+* new: added Skip buttons to ESP touch calibration page and while seeking best NTP
+* new: support for running set-uid root as any file name or symlink (see FAQ)
+* change: AZM button now says AZM or MER instead of always AZM with opposite b/w
+* change: more set_stopwatch web commands
+* change: use /dev/gpiomem instead of /dev/mem for RPi GPIO access
+* change: put small deadband around VOACAP power touch area
+* fixed: better RPi error messages if self-update or VOACAP fails
+* fixed: stopwatch page honors idle timer and follows photocell
+
+Version 2.56: 2021-01-09
+
+* new: added map label option, "GRD", to mark maidenhead grid squares around edge
+* new: added Setup page 3 to adjust satellite footprint and path colors
+* change: replace Moon pane distance with time of next rise or set
+* change: web server now uses port 8080 to eliminate that reason to run as root
+* change: changed web stopwatch commands, see FAQ for details
+* fixed: Moon image was not always updated on time
+* fixed: On/Off brightness timers not always ignored when set equal
+* fixed: require gpsd TPV class record
+
+Version 2.55: 2020-12-13
+
+* new: display Moon phase and DE info in any pane
+* new: web server command set_voacap to set map
+* change: SSN and Solar flux now show 30 day history
+* fixed: reduced jaggies on larger screen sizes
+* fixed: better performance under peak server loads
+
+Version 2.54: 2020-12-05
+
+* new: global VOACAP maps; select by tapping desired band number in VOACAP pane
+* new: can now specify a specific NTP server in Setup
+* new: plot pane 3 can now show persistent live local DX weather
+* new: Setup Page 2 option to disable all GPIO access for RPi and ESP
+* new: web commands get_* and set_touch now also work in some auxiliary pages
+* new: changes in next version are listed on remote update page
+* new: tap DX symbol in DX pane to repeat info for same DX position
+* change: look for BME280 sensor at either I2C address 0x76 or 0x77
+* change: dx spot setup map option can be set to none, full call or just prefix
+* change: add "Are you sure?" and Exit choice to RPi fb0 shutdown menu
+* change: add more international NTP servers to internal list and always use fastest
+* fixed: dx spot heading parser could mistakenly find unit label within QTH name
+
+Version 2.53: 2020-10-28
+
+* new: plot pane 1 can now show persistent live DE local weather
+* new: setup option to set whether dx spots are plotted on map
+* changed: use slashed-zero in DE call sign if applicable
+* changed: plot just the dx cluster spot prefix on map, not the entire call sign
+* changed: accept 63 character WPA-2 passwords (previous limit was 31)
+* fixed: record BME env sensor readings even when not being displayed
+* fixed: rare gpsd connection issue
+
+Version 2.52: 2020-10-10
+
+* new: two map styles now available, Terrain and Countries; select in Setup
+* new: NOAA Space Weather RSG scales now available in the right plot pane
+* new: add support for JTDX FT8 as a "cluster" similar to WSJT-X
+* new: DX Cluster spots are displayed on map in addition to being listed
+* new: can now tap to stop Satellite listing any time to avoid waiting for all entries
+* new: report gpsd results on network startup summary page
+* new: add new option to log usage to guide further development; default is no
+* new: add progress bar during remote updates
+* new: add more plot pane position assignment choices
+* new: add web commands get_config, get_dxspots and set_pane (see FAQ)
+* new: add range, rate and doppler shifts to web command get_satellite
+* changed: remove set_dxclusterOnOff web command (use new set_pane instead)
+* changed: move RPi configuration files to ~/.hamclock directory
+* changed: add .txt extension to all web get_* commands not otherwise specified
+* fixed: remove date flicker when changing DE pane to Analog clock format
+* fixed: ignore occulted DE controls when pane is in Analog or Calendar format
+* fixed: remove bell characters from dx cluster log
+* fixed: remove symbol flicker at far right of X11 display
+* fixed: retain setup gpsd and dx host names even when disabled
+* fixed: inform dx cluster of new grid/lat/long if move DE
+* fixed: allow for slow RPi WiFi connection when starting via crontab @reboot
+* fixed: rare case of photosensor bar graph drawing out of bounds
+* fixed: changed Yukon Territories time zone from UTC-8 to UTC-7
+
+Version 2.51: 2020-08-08
+
+* new: can now connect to WSJT-X to automatically set DX to FT8 station worked
+* new: add direct brightness control on ESP and RPi with DSI fb0
+* changed: add idle time to set_displayTimes web command
+* fixed: added better guard gap around time zone buttons
+* fixed: HTTP response from get_satellite was malformed when no sat defined
+* fixed: improved RPi GUI performance
+
+Version 2.50: 2020-07-26
+
+* new: add Reboot option to cancel page (Pi fb0 only)
+* changed: DE and DX DST buttons now cycle time zone -1/0/+1
+* fixed: stale Idle could prevent clock On timer from restoring screen
+* fixed: get_capture.bmp could give black image from X11 desktops
+* fixed: improve response time from some RPi input devices
+* fixed: one more DE Calendar update bug
+
+Version 2.49: 2020-07-10
+
+* new: added more RESTful web commands, see FAQ
+* new: min and max brightness in Setup
+* new: idle timeout clock timer
+* fixed: DE calendar update interval
+
+Version 2.48: 2020-07-03
+
+* changed: always fall back to NTP if gpsd ever fails (not just initially)
+* changed: 10 seconds touch and Setup opportunity (5 previously)
+* changed: allow connecting to DX port numbers down to 23 (1000 previously)
+* fixed: allow full length dx cluster host name in Setup
+* fixed: better detection whether cluster is really a Spider
+* fixed: DE and DX were not properly updated when modifying UTC in certain ways
+
+Version 2.47: 2020-06-19
+
+* new: added a count down timer in Stopwatch, handy as 10 minute ID timer
+* new: allow Kp to be positioned in right pane
+* new: added more RESTful web commands, see FAQ
+* new: added pressure calibration offset to Setup, handy for correcting station to sea level
+* new: show project URL on Update page as reminder how to review changes before deciding
+* changed: brighter lat/long 0/0 lines
+* changed: slightly sharper twilight edge -- better match to actual photos
+* fixed: UTC button was unresponsive if wifi connected late
+* fixed: Setup page was not accepting keyboard Enter for Done
+* fixed: support web commands from more browsers
+* fixed: more efficient RSS
+* fixed: Setup count down was cut off in RPi fb0
+
+Version 2.46: 2020-05-29
+
+* new: gpsd now also sets time, useful if no NTP
+* new: tap lower left corner of VOACAP pane to cycle power 1-10-100-1000 watts
+* changed: added several KX3 cleanup commands before setting frequency
+* changed: WiFi Setup on RPi uses wpa_supplicant.conf if present
+* changed: add ellipsis to Setup Page prompt to emphasize tapping will change page
+* changed: replace satellite CUBESAT XI-V with AO-27
+* fixed: better error message if wx lookup fails
+* fixed: removed occasional stray pixels when deleting a character in Setup
+* fixed: DE calendar now rolls at local midnight, not UTC midnight
+
+Version 2.45: 2020-05-13
+
+* new: gpsd now supported on all Clock architectures and host is settable in Setup
+* new: DE calendar option, tap DE: to cycle formats
+* new: Setup field to set BME temperature correction value
+* new: Setup field to set KX3 baud rate to 4800 or 38400
+* change: Setup is now two pages with more options
+* change: replace satellites AAUSAT-II, ITUPSAT1, KISEKI and SRMSAT with Huskysat, NO-103, NO-104 and RS-44
+
+Version 2.44: 2020-05-07
+
+* new: set Elecraft KX3 to DX Cluster Spot frequency; see FAQ for details
+* new: display current version number in red if newer version is available
+* changed: UTC button label says "OFF" when Clock time is not UTC
+* fixed: better algorithm to find RPi IP address
+* fixed: better keyboard tab support in RPi Setup
+* fixed: larger RPi fb0 cursor on 7-9" displays
+
+Version 2.43: 2020-04-16
+
+* new: holding padlock for 3 seconds gives offer to shutdown RPi if using fb0
+* changed: UTC button label says "NOT" and color is red when time is not UTC
+* fixed: wrong units in BME280 temperature change in V 2.41 (change was too large)
+* fixed: time skew between exiting and reentering stopwatch
+
+Version 2.42: 2020-04-02
+
+* changed: improved refraction model for satellite passes; especially improves Moon rise/set times
+* fixed: occasional double sat path after erasing NCDFX beacons
+
+Version 2.41: 2020-03-04
+
+* new: support Moon as a satellite for EME
+* changed: sat times now use h separator (instead of colon) if more than hour
+* changed: red fb0 cursor
+* changed: GOES 15 has been decommissioned, use GOES 16 for XRay flux
+* changed: tweak BME280 temperature reading algorithm
+* fixed: time zone near Long Island, NY
+
+Version 2.40: 2020-01-19
+
+* new: added simultaneous mouse support for RPi DSI 7" touch screen
+* new: added RPi keyboard hot plug
+
+Version 2.39: 2020-01-18
+
+* new: support for RPi DSI 7" touch screen
+* new: stopwatch color control
+* fixed: better RPi/UNIX cpu load management
+* fixed: small error in ESP LLG lines
+* changed: remove donoff
+
+Version 2.38: 2020-01-01
+
+* new: support local gpsd for GPS location devices on RPi or other UNIX
+* new: Setup allows entering fractional DE lat and long
+* new: add Skip buttons to Setup and WiFi screens
+* changed: increase tap HOLD time from 1000 to 1500 ms
+* fixed: more reliable RPi fb0 display on/off method
+* fixed: ESP screen flip
+
+Version 2.37: 2019-12-27
+
+* fixed: ESP Setup prompts
+
+Version 2.36: 2019-12-21
+
+* fixed: eliminate RPi fb0 cursor flicker
+* fixed: RPi unable to control HDMI on/off when started from certain crontab entries
+* fixed: Santa could reboot ESP in certain situations
+
+Version 2.35: 2019-12-15
+
+* new: track Santa on Dec 24
+* new: RPi WiFi setup
+* changed: redesigned Setup screen
+
+Version 2.34: 2019-12-02
+
+* changed: 5x more efficient RSS handling
+* fixed: time could be several seconds off when started via crontab
+* fixed: UTC button could fail to turn on after failed NTP restored
+
+Version 2.33: 2019-11-28
+
+* new: horizon coordinate grid on satellite pass map
+* new: remote command set_display?on/off
+* changed: remote set_touch command does not turn display on
+* changed: blank out fb0 cursor after initial timeout period
+* fixed: remote get_capture.bmp for largest size
+* fixed: more efficient handling of failed remote command server
+
+Version 2.32: 2019-11-26
+
+* fixed: allow escaping from DX Cluster pane if call not valid
+* fixed: ignore taps between main seconds and UTC button
+* changed: turn off UTC button if no NTP (in addition to large question mark)
+* changed: remove trailing effect from RPi fb0 cursor over map
+
+Version 2.31: 2019-11-11
+
+* new: show dx cluster port number
+* new: 30 degree tick marks on satellite path horizon
+* new: major work in preparation for gimbal and rotator support
+* fixed: time zone values near Long Beach CA
+* fixed: dx cluster report could overflow its pane boundary
+
+Version 2.30: 2019-10-25
+
+* fixed: network issue when dx cluster and satellite both active
+* fixed: incorrect spot call sign prefix
+
+Version 2.29: 2019-10-11
+
+* fixed: compile bug on RPi
+
+Version 2.28: 2019-10-11
+
+* fixed: several EEPROM settings were still getting lost. Hopefully this is the last EEPROM bug .. thanks for your patience.
+
+Version 2.27: 2019-10-10
+
+* fixed: call sign was lost after Setup screen and some EEPROM values will need resetting
+
+Version 2.26: 2019-10-09
+
+* fixed: DX Cluster could hang depending on connection state
+* changed: leave DX Cluster host blank to disable entirely
+* changed: allow call signs up to 11 characters long
+
+Version 2.25: 2019-10-07
+
+* changed: DX Cluster now requires Setup server entry, there is no default
+* fixed: improved plot data error messages
+
+Version 2.24: 2019-10-02
+
+* new: tapping a DX Cluster spot will set it as new DX
+fixed: Wire.cpp compile error on some UNIX systems
+
+Version 2.23: 2019-09-28
+
+* new: DX Spider spots are an option in the center plot pane
+* changed: desktop no longer accepts host time, ? warning is displayed unless NTP network time is confirmed
+* fixed: DX prefix tag could go off the map when very close to right edge of AZM projection
+* fixed: possible missing WX error message
+* fixed: change in V2.18 broke time zone offset near zone boundaries
+
+Version 2.22: 2019-09-23
+
+* fixed: 24 hour clock-off bug
+* fixed: added better desktop remote update error messages
+* fixed: xray plot guards against bogus 0 values
+
+Version 2.21: 2019-09-20
+
+* fixed: ESP sporadic rebooting
+
+Version 2.20: 2019-09-14
+
+* change: ESP with photoresistor now also includes on/off timer control
+* change: underline "DX:" to suggest it can be clicked for sat selection table
+* fixed: tweaked several prefix locations
+
+Version 2.19: 2019-09-10
+
+* new: show closest DX prefix when tap new location if one is near
+* new: option to show DX prefix instead of sun rise/set times (tap to select)
+* new: display on/off timer control if no photoresistor in ESP or RPi fb0
+* change: sat selection shown only if requested (no longer shown on boot)
+* change: significant core graphics redesign
+* change: RPi FB0 cursor disappears after 2 seconds of no mouse motion
+* fixed: turning on geoip in setup disables lat/long fields
+* fixed: desktop network info now uses /sbin/ip if no /sbin/ifconfig
+* fixed: add slash to desktop small font 0 to match ESP
+* fixed: possible loss of desktop EEPROM emulation file
+
+Version 2.18: 2019-08-18
+
+* new: show sat pass duration next to max elevation; remove zenith marker
+* new: touching top and bottom edges of hours changes by 2, minutes by 10
+* fixed: desktop map is brighter and has much simpler oceans
+* fixed: NCXDF call sign could encroach on RSS area
+* fixed: sat name over oceans better avoids DE and DX markers
+
+Version 2.17: 2019-08-16
+
+* new: separate maps optimized for TFT and desktop displays
+* new: third lat/long grid option showing tropics
+* new: show NCDXF call sign beneath each station
+* fixed: more natural character spacing in setup
+* fixed: stop sun and moon from flashing when at right edge
+
+Version 2.16: 2019-08-10
+
+* new: support for 2400x1440 and 3200x1920 desktop sizes; no feature changes.
+
+Version 2.15: 2019-08-07
+
+* new: display serial number in network splash screen
+* fix erasing ? when NTP resumes
+
+Version 2.14: 2019-08-05
+
+* Argh, missed another spot for GFX library
+
+Version 2.13: 2019-08-05
+
+* missed one spot for GFX library
+
+Version 2.12: 2019-08-05
+
+* tighten up geometry for latest GFX library
+* fix stopwatch rollover after 99 hours
+
+Version 2.11: 2019-08-04
+
+* Change to accommodate Adafruit_RA8875.h version 1.3.3
+
+Version 2.10: 2019-08-03
+
+* new: stopwatch
+* new: tap Rise/Set to toggle between duration vs local time
+* new: optional map lat/long grid
+
+Version 2.09: 2019-07-27
+
+* added new server command to allow displaying any satellite:
+   <http://Your-HamClock-IP/set_sattle?name=abc&t1;=line1&t2;=line2>
+* Like all the server commands, you can send this with most browsers or with curl or wget from the command line.
+* Unfortunately, Chrome tries to be helpful so will not work unless you replace each blank with %20.
+
+Version 2.08: 2019-07-19
+
+* coordination release, no functional changes
+
+Version 2.07: 2019-07-14
+
+* new: VOACAP predictions may be made for short or long path
+* new: tap sat name on map to get pass details (in addition to sat location)
+* new: color key added to sat selection pane title
+* new: better RPi X11 desktop drawing performance
+
+Version 2.06: 2019-07-11
+
+* fixed: bearing and map used lat/long 0/0 after boot until set
+* new: tapping bearing to toggle between short and long path changes distance to match
+
+Version 2.05: 2019-07-10
+
+* fixed: preserve DE grid square
+* fixed: DX grid square would show through if click there while sat pass is shown
+* fixed: fill screen off by 1 pixel in X11 version
+
+Version 2.04: 2019-07-06
+
+* new: tap bearing to toggle between long and short path
+* new: tap sat name to see pass details (in addition to current sat location)
+* fixed: disable tty1 getty on fb0 version
+
+Version 2.03: 2019-07-03
+
+* fixed: do not start collecting sensor data until NTP time has succeeded
+* fixed: say "No Set", not "No Rise", when geostationary satellite is visible from DE
+* fixed: left-right cursor wrap in RPi fb0 version
+* reduce flicker when sun is near moon
+* Updated remote command set, send /help for list
+
+Version 2.02: 2019-06-20
+
+* Change Band Conditions title to hopefully clarify the meaning of the table
+
+Version 2.01: 2019-06-10
+
+* New option to set DE Lat/Long automatically using IP geolocation service
+* 2x Mercator and 1.3x Azimuthal map drawing speed up
+* Added some NOAA weather satellites to list
+
+Version 2.00: 2019-05-27
+
+* Setting a new DX location shows VOACAP band predictions from DE
+
+Version 1.94: 2019-05-13
+
+* fix bug in RPi version that interfered with WiFi configuration
+
+Version 1.93: 2019-05-10
+
+* all new brightness controls
+
+Version 1.92: 2019-05-09
+
+* only ask for WiFI credentials in Setup on ESP version, require user to setup their internet first on other versions
+
+Version 1.91: 2019-04-24
+
+* fix bug where DE DST flag was not being restored from NVRAM
+* fix bug causing moon to leave sparkles on edge of azimuthal map
+* use manufacturing wifi credentials as initial default
+* change brightness bulbs from yellow to white
+* draw small symbol if photoresistor is detected
+* draw satellite name grayed out in list if never rises at DE
+
+Version 1.90: 2019-03-31
+
+* add light bulb icons as display brightness controls (ESP models only)
+* fix rare issue when a satellite pass lasted less than 90 seconds
+
+Version 1.89: 2019-03-15
+
+* do not draw DX marker if should be hidden by RSS
+* allow lower case nsew in login screen
+* remove blinking cursor in RPi fb0 version
+* improve methods for discovering gateway and wlan0 ip in RPi version
+* shorter network count-down
+* add grid square touch to show possible alternate if not exactly at integral coordinates
+
+Version 1.88: 2019-01-20
+
+* fix RPi fb0 cursor overflow along bottom edge
+* don't redraw map if tap on UTC when already On
+* don't briefly show DE info after refresh when analog clock is enabled
+* fix down counter color in remote update pane
+
+Version 1.87: 2018-12-25
+
+* Tweak analog clock hands
+* fix bug if satellite pass curve is very short
+* fill black border on RPi fb0 version to erase any system messages
+
+Version 1.86: 2018-12-23
+
+* squeeze more Satellites in table
+
+Version 1.85: 2018-12-17
+
+* fix character spacing issue in Setup screen
+* fix issues building on Ubuntu-MATE
+
+Version 1.84: 2018-12-11
+
+* only draw transmitting NCDXF beacons
+* preselect No button to emphasize firmware update will not occur by default
+* show satellite list name red if up now, green if up soon
+* faster satellite list drawing
+
+Version 1.83: 2018-12-10
+
+* Show time to next rise for each satellite in selection screen
+* Start NTP rotation with time.google.com
+
+Version 1.82: 2018-12-03
+
+* Swap colors for satellite track and footprint
+* Label 0 (now) on plots with future predictions
+
+Version 1.81: 2018-12-01
+
+* Increase tap hold time to 1 full second
+* Draw satellite footprint in darker red to better distinguish from track
+* Fix sometimes erasing screen lock padlock
+
+Version 1.80: 2018-11-24
+
+* Add new analog DE clock option
+
+Version 1.79: 2018-11-23
+
+* holding the screen lock padlock will restart
+* use same stored colors in splash call sign
+
+Version 1.78: 2018-11-21
+
+* fix sat pass graphic if maximum elevation less than 1 degree
+* allow using keyboard in Setup pane if built for x11
+
+Version 1.77: 2018-11-04
+
+* support for longer WiFi SSID and password
+
+Version 1.76: 2018-10-08
+
+* add dew point sensor plot
+* prompt Tap or Click
+
+Version 1.75: 2018-10-05
+
+* Show Satellite name immediately when set a DX
+* fix bug in desktop EEPROM emulation that eventually starved all io
+
+Version 1.74: 2018-09-29
+
+* Satellite name cooperates with RSS
+
+Version 1.73: 2018-09-28
+
+* label satellite name on map when not in DX region
+
+Version 1.72: 2018-09-25
+
+* smoother sensor plot update after changing satellite
+* report wifi RSSI on linux
+* add hamclock-fb0-small Makefile target for RPi's with 7" screens
+* more reliable reporting of MAC address
+
+Version 1.71: 2018-09-23
+
+* don't ask rotation on desktops
+
+Version 1.70: 2018-09-22
+
+* restore uptime after changing satellite
+
+Version 1.69: 2018-09-19
+
+* higher resolution moon symbol on big desktop versions
+* better looking J on big desktop versions
+* fix occasional missing or partially drawn lines in desktop versions
+
+Version 1.68: 2018-09-17
+
+* big desktop versions display commensurately higher resolution SDO images
+
+Version 1.67: 2018-09-15
+
+* support self updating in desktop versions too
+* tap Version to check whether an update is available (all versions)
+
+Version 1.66: 2018-09-12
+
+* allow resizing desktop versions
+* allow listing more satellites
+
+Version 1.65: 2018-09-09
+
+* better moon rendering
+
+Version 1.64: 2018-09-06
+
+* fix stray satellite path pixels at edge of Azimuthal view
+
+Version 1.63: 2018-09-04
+
+* add support for linux, RPi and macOS desktop
+
+Version 1.62: 2018-09-02
+
+* fix problem where a new sat selection was not always used
+
+Version 1.61: 2018-09-01
+
+* add satellite and settime RESTful commands
+* improve checking whether TLE is suitable epoch
+* improve Bosch BME280 temperature and humidity accuracy
+
+Version 1.60: 2018-08-25
+
+* label satellite path zenith and maximum elevation
+* add memory and reboot RESTful commands
+
+Version 1.59: 2018-08-22
+
+* remove grayline option, replace GRA button with AZM
+* improve memory management for long paths
+* add count down to firmware update screen
+* fix sat tracks leaving pixels on map edge
+
+Version 1.58: 2018-08-19
+
+* better twilight for RPi version too
+
+Version 1.57: 2018-08-19
+
+* much better grayline twilight graphics
+* erase dx marker and path when changing to Satellite info mode
+
+Version 1.56: 2018-08-19
+
+* better screen management going into and back from sat selection page
+* refresh sat info if user changes time a lot
+* increase current satellite location tap area
+* fix tapping area for dx lat/long
+
+Version 1.55: 2018-08-16
+
+* add display of Earth satellites
+
+Version 1.54: 2018-06-30
+
+* linux version now just uses existing network
+* progress dots replaced with count down
+* improved environment sensor initialization and expand plot to 25 hours
+* better http handling
+* reduce linux map raster jaggies
+
+Version 1.53: 2018-06-19
+
+* fix xray level designation below A and above X
+
+Version 1.52: 2018-06-03
+
+* display xray level designation
+* accommodate more RPi screen resolutions
+* fix rainbow on RPi
+
+Version 1.51: 2018-06-01
+
+* new Earth map
+* add support in RPi version for Bosch BME280 environment sensor
+
+Version 1.50: 2018-05-29
+
+* first release supporting Raspberry Pi
+* refresh RSS immediately when toggle map projection
+* display complete IP address
+* fix box around wx report that did not quite match the alternate plot
+
+Version 1.49: 2018-05-13
+
+* show device MAC address before connecting
+
+Version 1.48: 2018-05-12
+
+* RSS now occupies 2 rows
+
+Version 1.47: 2018-05-05
+
+* all new RSS system that retrieves from my server
+* displays round robin from ARRL, Southgate, eHam and DXNews
+* label weather units
+
+Version 1.46: 2018-05-01
+
+* remove eHam RSS because they now redirect to https and there is no room in Huzzah to support https.
+
+Version 1.45: 2018-04-29
+
+* add Setup option to enter initial DE lat and long
+* center date better under wider call sign area
+* time zone table now uses 1 degree resolution
+* add photocell wiring to README
+
+Version 1.44: 2018-04-27
+
+* add Setup option to rotate screen
+* squeeze out a little more room for wider call signs
+* offer a little more time to choose Recalibrate and Setup screens
+
+Version 1.43: 2018-04-20
+
+* remove option to downgrade
+* fix plot bug if sensor drops out for extended period then recovers
+
+Version 1.42: 2018-04-10
+
+* More automated remote update knows when a new version is available
+* Touch now supports auto-repeat in most fields
+* Add degree symbol to weather temperature value
+* Add more specific weather error messages
+
+Version 1.41: 2018-03-25
+
+* Show weather data for 30 seconds after changing DE or DX
+
+Version 1.40: 2018-03-18
+
+* a little more map detail
+* more robust RSS parser
+* faster WiFi retries when signal is lost
+* fix RSS flashing when no WiFi signal
+* increase clock from 80 to 160 MHz
+
+Version 1.39: 2018-02-17
+
+* eliminate need for Shift key in setup keyboard -- show both cases at once
+* Raise upper case J in smaller font
+
+Version 1.38: 2018-02-10
+
+* add remote WiFi firmware updating
+* smoother brightness control
+* fix speckles across the bottom of RSS banner
+* allow 0-length setup fields
+* more efficient Grayline toggle
+* new RESTful commands:
+* http://<HamClock_ip>/newdegrid?AB12
+* http://<HamClock_ip>/newdxgrid?AB12
+
+Version 1.37: 2018-02-04
+
+* better J in regular font
+* softer border lines
+* use separate colors for short and long path
+* add more instructions for touch screen calibration
+* more grid square mods
+
+Version 1.36: 2018-01-24
+
+* add Azimuthal projection option
+* add WiFi connection progress dots
+* add degree symbol after bearing angle
+
+Version 1.35: 2018-01-19
+
+* accommodate changes in ESP library version 2.4.0 and still maintain compatibility with older versions
+
+Version 1.34: 2018-01-10
+
+* allow Huzzah to reuse stored SSID for faster booting and faster recovery if WiFi comes back
+* fix for rare compile problem related to Time.h by changing to TimeLib.h
+* split right plot touch so top half cycles SDO images and bottom half cycles sensor plots (if installed)
+* tweak xray download code
+
+Version 1.33: 2017-12-30
+
+* further improve rendering call signs containing descending characters
+* improve WiFi state reporting and resilience to NTP errors
+* plot both long and short XRay wavelengths
+
+Version 1.32: 2017-12-08
+
+* add padlock icon that locks screen
+* tweak time zone for Bouvet Island
+
+Version 1.31: 2017-11-26
+
+* alternate WiFi dBm with IP
+
+Version 1.30: 2017-11-25
+
+* redirect all web accesses to CSI server
+* increase wifi login timeout
+
+Version 1.29: 2017-11-17
+
+* Tweak RESTful commands
+* http://<HamClock_ip>/touch?x=X&y=Y
+* http://<HamClock_ip>/capture.bmp
+* http://<HamClock_ip>/help
+
+Version 1.28: 2017-11-10
+
+* 25 hour XRay plot
+* More RESTful commands, returns new values in JSON format if applicable
+* http://<HamClock_ip>/capture
+* http://<HamClock_ip>/sensors
+* http://<HamClock_ip>/grayline?on/off
+* http://<HamClock_ip>/newde?lat=X&lng=Y
+* http://<HamClock_ip>/newdx?lat=X&lng=Y
+
+Version 1.27: 2017-10-19
+
+* avoid pressure values overflowing plot size in metric mode
+
+Version 1.26: 2017-10-05
+
+* reduce clock flicker -- contributed by W2ROW
+
+Version 1.25: 2017-10-04
+
+* add Metric/Imperial setup option to choose sensor plot units
+
+Version 1.24: 2017-10-02
+
+* make GRA button more consistent with RSS
+* fix rounding error in maidenhead grid square calc
+* reset sensor queue if fails to restart
+
+Version 1.23: 2017-09-30
+
+* add grayline on/off button
+
+Version 1.22: 2017-09-30
+
+* add grayline down to 12° twilight
+
+Version 1.21: 2017-09-23
+
+* better setup keyboard
+
+Version 1.20: 2017-09-21
+
+* improve rendering of call signs with descending characters J and Q
+
+Version 1.19: 2017-09-20
+
+* fix SDO web site name
+
+Version 1.18: 2017-09-19
+
+* fix display bug if solar flux prediction download fails
+
+Version 1.17: 2017-09-17
+
+* improve drawing lunar phases
+* reset the Bosch sensor if any value seems bogus
+
+Version 1.16: 2017-08-20
+
+* posted to QST in-depth

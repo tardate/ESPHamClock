@@ -1,4 +1,4 @@
-# HAM Clock
+# HamClock
 
 HamClock is a kiosk-style application that provides real time space weather, radio propagation models, operating events and other information particularly useful to the radio amateur. HamClock was introduced in an
 [October 2017 QST article](https://web.archive.org/web/20251130070310/https://clearskyinstitute.com/ham/HamClock/QST-HamClock.pdf).
@@ -19,8 +19,19 @@ The front-end source code is here, but it will really take an effort to re-engin
 
 The repository here is currently just an archive of all prior releases of the open-sourced front-end software.
 
+## Documentation
+
+* [FAQ](./doc/faq.md)
+* [RESTful API](./doc/api.md)
+* [User Contrib](./hamclock-contrib/README.md)
+* [ESP8266 Notes](./doc/esp8266-installation.md)
+* [Desktop Notes](./doc/desktop-installation.md)
+* [Credits](./doc/credits.md)
+* [HamClock User Manual v4.22](./doc/HamClockKey.pdf)
+* [Original QST Article](./doc/QST-HamClock.pdf)
+
 ## References
 
 * <https://clearskyinstitute.com/ham/HamClock/> - the original home
-* <https://web.archive.org/web/20251130070310/https://clearskyinstitute.com/ham/HamClock/> a good archive.org entry point into the history of HamClock
+* <https://web.archive.org/web/20260123074655/https://www.clearskyinstitute.com/ham/HamClock/> a good archive.org entry point into the history of HamClock website
 * <https://www.reddit.com/r/amateurradio/comments/1qqdwln/elwood_downey_wb0oew_creator_of_hamclock_is/>
