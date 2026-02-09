@@ -153,7 +153,7 @@ Same but in the main map area:
 * resize will expand the image to fill the box, but will maintain the aspect ratio using black gaps if necessary.
 * fill will expand the image to fill the entire box, changing the aspect ratio if necessary.
 * crop will extract the center portion of the image to fill the box, making no attempt to resize.
-* To remove the User image, run set_bmp with off: set_bmp?pane=map&off;
+* To remove the User image, run set_bmp with off: `set_bmp?pane=map&off`
 * There are several popular tools available to create bmp files from a variety of formats. Here are some examples that create myimage.bmp from myimage.png and the Debain package to be installed for its use:
 
         sudo apt install ffmpeg
