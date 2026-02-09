@@ -70,7 +70,7 @@ static void setCDLEDState (SWCDState cds)
         setBlinkerRate (SW_CD_GRN_PIN, BLINKER_ON);
         setBlinkerRate (SW_CD_RED_PIN, BLINKER_OFF);
         break;
-    case SWCDS_WARN: 
+    case SWCDS_WARN:
         // green blinking, red on
         setBlinkerRate (SW_CD_GRN_PIN, SW_CD_BLINKHZ);
         setBlinkerRate (SW_CD_RED_PIN, BLINKER_ON);
@@ -115,6 +115,13 @@ static bool alarmSwitchIsTrue(void)
 {
     // pin is active-low
     return (!readMCPPoller (SW_ALARMOFF_PIN));
+}
+
+/* control the alarm clock output pin
+ */
+static void initAlarmPin (void)
+{
+    mcp.pinMode (SW_ALARMOUT_PIN, OUTPUT);
 }
 
 /* control the alarm clock output pin
@@ -235,9 +242,9 @@ static void setAlarmPin (bool set)
 
 // contols common to both big clock styles
 #define BC_CDP_X        0                       // countdown period x
-#define BC_CDP_Y        (480-SW_BH)             // countdown period y 
-#define BC_CDP_W        100                     // countdown period width 
-#define BC_CDP_H        SW_BH                   // countdown period height 
+#define BC_CDP_Y        (480-SW_BH)             // countdown period y
+#define BC_CDP_W        100                     // countdown period width
+#define BC_CDP_H        SW_BH                   // countdown period height
 #define BC_ALMD_X       (BC_CDP_X+BC_CDP_W)     // x coord of daily alarm time box
 #define BC_ALMD_Y       BC_CDP_Y                // y coord of daily alarm time box
 #define BC_ALMD_W       SW_BW                   // daily alarm message width
@@ -347,7 +354,7 @@ static void loadSWNV(void)
     }
 
     /* read and unpack daily alarm time and whether armed or utc.
-     *    
+     *
      *                     Armed?    UTC?
      *             5759 \
      *             ......>  yes      yes
@@ -717,7 +724,7 @@ static void drawAlarmIndicators (bool label_too)
 }
 
 /* draw remaining count down time and manage the state of the count down button and LED.
- * N.B. we handle all display states but assume sws_engine == SWE_COUNTDOWN 
+ * N.B. we handle all display states but assume sws_engine == SWE_COUNTDOWN
  */
 static void drawCDTimeRemaining(bool force)
 {
@@ -730,7 +737,7 @@ static void drawCDTimeRemaining(bool force)
     if (!force && !timesUp (&gate, 31))
         return;
 
-    // get ms remaining 
+    // get ms remaining
     uint32_t ms_left = getCountdownLeft();
 
     // determine range and color
@@ -945,7 +952,7 @@ static bool drawBCDEWxInfo(void)
 static void drawBCSpaceWxInfo (bool all)
 {
     if (checkForNewSpaceWx() || all)
-        drawNCDXFSpcWxStats(sw_col);   
+        drawNCDXFSpcWxStats(sw_col);
 }
 
 /* mark each control or indicator box for debugging big clock layout
@@ -962,7 +969,7 @@ static void drawBCShowAll()
     }
 }
 
-/* draw the digital Big Clock 
+/* draw the digital Big Clock
  */
 static void drawDigitalBigClock (bool all)
 {
@@ -1109,9 +1116,9 @@ static void drawDigitalBigClock (bool all)
         drawDigit (b, mnunit, BDC_HMLT, SW_BG, sw_col);
         b.x += BDC_HMW;
         prev_mnunit = mnunit;
-    } else 
+    } else
         b.x += BDC_HMW + BDC_HMGAP + BDC_HMW;
-        
+
     // add seconds as superscript if wanted
     if (want_secs) {
 
@@ -1891,7 +1898,7 @@ static void updateOnceAlarmTouch (SCoord &s)
         tm.tm_min += direction;
         if (mark_taps)  tft.drawLine (x, alarm_once.time_b.y, x, alarm_once.time_b.y + alarm_once.time_b.h, RA8875_RED);
     }
-    
+
     if (mark_taps) wdDelay (1000);
 
     // always 0 out seconds
@@ -2104,7 +2111,7 @@ static void checkSWPageTouch()
                 drawAlarmIndicators (false);
                 saveSWNV();
             }
-        
+
         } else if (inBox (s, A_b)) {
 
             // box action depends on current engine state
@@ -2377,6 +2384,7 @@ void initStopwatch()
     startMCPPoller (SW_ALARMOFF_PIN);
 
     setCDLEDState (SWCDS_OFF);
+    initAlarmPin ();
     setAlarmPin (false);
 }
 
